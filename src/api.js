@@ -1,4 +1,4 @@
-export const API_URL = process.env.REACT_APP_API_URL || "http://localhost:3001" || "https://sync-wave-official-server.onrender.com";
+export const API_URL = process.env.REACT_APP_API_URL || "https://sync-wave-official-server.onrender.com";
 export const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || API_URL;
 
 export function getStoredAuth() {
