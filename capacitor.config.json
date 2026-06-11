@@ -1,0 +1,11 @@
+{
+  "appId": "com.syncwave.app",
+  "appName": "SyncWave",
+  "webDir": "build",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

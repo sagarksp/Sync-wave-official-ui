@@ -1,0 +1,68 @@
+import React, { useEffect, useRef, useState } from "react";
+import { useSocket } from "../context/SocketContext";
+
+function time(value) {
+  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+export default function Chat({ deviceName }) {
+  const { emit, messages, typingDevices } = useSocket();
+  const [text, setText] = useState("");
+  const bottomRef = useRef(null);
+  const typingRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+
+  const send = (e) => {
+    e.preventDefault();
+    const message = text.trim();
+    if (!message) return;
+    emit("chat_message", { message });
+    emit("typing", { isTyping: false });
+    setText("");
+  };
+
+  const handleChange = (e) => {
+    setText(e.target.value);
+    emit("typing", { isTyping: true });
+    clearTimeout(typingRef.current);
+    typingRef.current = setTimeout(() => emit("typing", { isTyping: false }), 900);
+  };
+
+  return (
+    <div className="chat-panel">
+      <div className="panel-header">
+        <span className="panel-title">Chat</span>
+        <span className="panel-badge">{messages.length}</span>
+      </div>
+
+      <div className="chat-list">
+        {messages.length === 0 && <div className="chat-empty">Messages from your devices appear here.</div>}
+        {messages.map((m) => {
+          const mine = m.deviceName === deviceName;
+          return (
+            <div key={m._id || `${m.timestamp}-${m.message}`} className={`chat-message ${mine ? "mine" : ""}`}>
+              <div className="chat-meta">
+                <span>{m.deviceName}</span>
+                <time>{time(m.timestamp)}</time>
+              </div>
+              <div className="chat-bubble">{m.message}</div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      <div className="typing-line">
+        {typingDevices.length ? `${typingDevices.join(", ")} typing...` : ""}
+      </div>
+
+      <form className="chat-form" onSubmit={send}>
+        <input value={text} onChange={handleChange} placeholder="Message your devices" maxLength={1000} />
+        <button disabled={!text.trim()}>Send</button>
+      </form>
+    </div>
+  );
+}
