@@ -4,6 +4,10 @@ import { SOCKET_URL } from "../api";
 
 const SocketContext = createContext(null);
 
+function debug(deviceName, event, details) {
+  console.log(`[${deviceName || "SyncWave Device"}] ${event}`, details || "");
+}
+
 export function SocketProvider({ children, auth, onSocketError }) {
   const socketRef = useRef(null);
   const [connected, setConnected] = useState(false);
@@ -21,15 +25,32 @@ export function SocketProvider({ children, auth, onSocketError }) {
 
     socket.on("connect", () => {
       setConnected(true);
+      debug(auth.deviceName, "SOCKET_CONNECTED");
+      debug(auth.deviceName, "SOCKET_EMITTED:join", { deviceId: auth.deviceId });
       socket.emit("join", { deviceId: auth.deviceId, deviceName: auth.deviceName }, (res) => {
         if (!res?.ok) onSocketError?.(res?.error || "Device connection failed");
       });
     });
-    socket.on("disconnect", () => setConnected(false));
-    socket.on("state_update", (s) => setState(s));
+    socket.on("disconnect", () => {
+      debug(auth.deviceName, "SOCKET_DISCONNECTED");
+      setConnected(false);
+    });
+    socket.on("state_update", (s) => {
+      debug(auth.deviceName, "SOCKET_RECEIVED:state_update", {
+        action: s.lastAction,
+        version: s.version,
+        hostDeviceName: s.hostDeviceName,
+        position: s.position,
+      });
+      setState(s);
+    });
     socket.on("messages_history", (items) => setMessages(items || []));
     socket.on("chat_message", (item) => setMessages((prev) => [...prev, item].slice(-120)));
     socket.on("typing", ({ devices }) => setTypingDevices(devices || []));
+    socket.on("control_rejected", (info) => {
+      debug(auth.deviceName, "SOCKET_RECEIVED:control_rejected", info);
+      onSocketError?.(`${info.action} is controlled by ${info.hostDeviceName || "host device"}`);
+    });
     socket.on("device_event", (event) => {
       setState((prev) => prev ? { ...prev, lastDeviceEvent: event } : prev);
     });
@@ -39,11 +60,12 @@ export function SocketProvider({ children, auth, onSocketError }) {
   }, [auth?.token, auth?.deviceId, auth?.deviceName, onSocketError]);
 
   const emit = useCallback((event, data) => {
+    debug(auth.deviceName, `SOCKET_EMITTED:${event}`, data);
     socketRef.current?.emit(event, data);
-  }, []);
+  }, [auth.deviceName]);
 
   return (
-    <SocketContext.Provider value={{ connected, state, setState, emit, messages, typingDevices, socketId: socketRef.current?.id }}>
+    <SocketContext.Provider value={{ connected, state, setState, emit, messages, typingDevices, socketId: socketRef.current?.id, deviceId: auth.deviceId, deviceName: auth.deviceName }}>
       {children}
     </SocketContext.Provider>
   );
