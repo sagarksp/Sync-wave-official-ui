@@ -36,11 +36,12 @@ export function SocketProvider({ children, auth, onSocketError }) {
       setConnected(false);
     });
     socket.on("state_update", (s) => {
-      debug(auth.deviceName, "SOCKET_RECEIVED:state_update", {
+      debug(auth.deviceName, "STATE_UPDATE", {
+        DEVICE_NAME: auth.deviceName,
         action: s.lastAction,
         version: s.version,
         hostDeviceName: s.hostDeviceName,
-        position: s.position,
+        SERVER_POSITION: s.position,
       });
       setState(s);
     });

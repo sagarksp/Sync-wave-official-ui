@@ -8,13 +8,26 @@ function fmt(sec) {
 }
 
 export default function Queue() {
-  const { state, emit } = useSocket();
+  const { state, emit, deviceId, deviceName } = useSocket();
   const [dragId, setDragId] = useState(null);
   const queue = state?.queue || [];
   const currentId = state?.currentSong?.id;
+  const isHost = !state?.hostDeviceId || state.hostDeviceId === deviceId;
 
-  const setQueue = (next) => emit("set_queue", { queue: next });
-  const play = (song) => emit("play_song", { song });
+  const setQueue = (next) => {
+    if (!isHost) {
+      console.log(`[${deviceName || "SyncWave Device"}] SET_QUEUE_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
+      return;
+    }
+    emit("set_queue", { queue: next });
+  };
+  const play = (song) => {
+    if (!isHost) {
+      console.log(`[${deviceName || "SyncWave Device"}] PLAY_SONG_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
+      return;
+    }
+    emit("play_song", { song });
+  };
   const remove = (e, id) => {
     e.stopPropagation();
     setQueue(queue.filter((s) => s.id !== id));

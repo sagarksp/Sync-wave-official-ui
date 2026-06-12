@@ -40,7 +40,7 @@ function Shell({ auth, onLogout }) {
         : `${state.lastDeviceEvent.deviceName} left`;
     } else if (prev.currentSong?.id !== state.currentSong?.id && state.currentSong) {
       msg = `Now playing: ${state.currentSong.title}`;
-    } else if (Math.abs((prev.position || 0) - (state.position || 0)) > 2) {
+    } else if (state.lastAction === "SEEK" && prev.lastActionId !== state.lastActionId) {
       const m = Math.floor(state.position / 60);
       const s = String(Math.floor(state.position % 60)).padStart(2, "0");
       msg = `Seeked to ${m}:${s}`;

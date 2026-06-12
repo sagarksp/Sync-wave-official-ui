@@ -13,7 +13,7 @@ function debug(deviceName, event, details) {
 
 function expectedPosition(state) {
   if (!state?.currentSong) return 0;
-  const base = Number(state.position || state.positionAtStart || 0);
+  const base = Number(state.position ?? state.positionAtPlay ?? 0);
   if (!state.isPlaying || !state.serverTime) return base;
   const elapsed = (Date.now() - state.serverTime) / 1000;
   return Math.min(base + elapsed, state.currentSong.duration || 9999);
@@ -41,7 +41,7 @@ export default function Player() {
     const audio = audioRef.current;
     if (!audio || !Number.isFinite(position)) return;
     remoteSeekRef.current = true;
-    debug(deviceName, "SEEK_APPLIED_REMOTE", { position, reason });
+    debug(deviceName, "SEEK_RECEIVED", { position, reason });
     try {
       audio.currentTime = Math.max(0, position);
       setLocalPos(audio.currentTime);
@@ -122,10 +122,10 @@ export default function Player() {
     const actual = audioRef.current?.currentTime || 0;
     const action = state?.lastAction || "";
     const isRemoteSeekAction = ["SEEK", "SONG_CHANGE", "NEXT", "PREV"].includes(action);
-    if (isRemoteSeekAction || Math.abs(actual - target) > 2.5) {
+    if (isRemoteSeekAction || Math.abs(actual - target) > 2) {
       safeRemoteSeek(target, action || "drift");
     }
-  }, [state?.lastActionId, state?.position, song?.id, dragging]);
+  }, [state?.lastActionId, state?.positionAtPlay, state?.startedAt, song?.id, dragging]);
 
   useEffect(() => {
     applyPlayState(state?.lastAction || "state-update");
@@ -144,8 +144,8 @@ export default function Player() {
 
       debug(deviceName, "PLAYER_STATE", {
         paused: audio.paused,
-        currentTime: audio.currentTime,
-        serverPosition: expectedPosition(currentState),
+        LOCAL_POSITION: audio.currentTime,
+        SERVER_POSITION: expectedPosition(currentState),
         isPlaying: currentState.isPlaying,
       });
 
@@ -173,6 +173,7 @@ export default function Player() {
     const pos = Number(e.target.value);
     setDragging(false);
     safeRemoteSeek(pos, "local-user");
+    debug(deviceName, "SEEK_SENT", { position: pos });
     emitControl("seek", { position: pos });
   };
 
