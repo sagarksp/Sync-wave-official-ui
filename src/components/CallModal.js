@@ -95,9 +95,11 @@ export default function CallModal() {
             <button className={`call-control ${call.speakerOff ? "off" : ""}`} onClick={call.toggleSpeaker} title="Speaker">
               {call.speakerOff ? "Speaker Off" : "Speaker"}
             </button>
-            <button className={`call-control ${call.screenSharing ? "on" : ""}`} onClick={call.toggleScreenShare} title="Share screen">
-              Share
-            </button>
+            {call.screenShareSupported && (
+              <button className={`call-control ${call.screenSharing ? "on" : ""}`} onClick={call.toggleScreenShare} title="Share screen">
+                {call.screenSharing ? "Stop Share" : "Share"}
+              </button>
+            )}
             <button className="call-control end" onClick={() => call.endCall("ended")} title="End call">End</button>
           </div>
         )}

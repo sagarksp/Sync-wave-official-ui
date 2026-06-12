@@ -23,11 +23,29 @@ function streamSummary(stream) {
   };
 }
 
+function isLocalhost() {
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function isCapacitorAndroid() {
+  const capacitor = window.Capacitor;
+  return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === "android");
+}
+
+function canShareScreen() {
+  return Boolean(
+    !isCapacitorAndroid() &&
+    navigator.mediaDevices?.getDisplayMedia &&
+    (window.isSecureContext || isLocalhost())
+  );
+}
+
 export function CallProvider({ children }) {
   const { emit, on, off, deviceId, deviceName, socketId, connected } = useSocket();
   const pcRef = useRef(null);
   const callRef = useRef({ status: "idle" });
   const localStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const pendingIceRef = useRef([]);
   const ringTimerRef = useRef(null);
@@ -81,6 +99,8 @@ export function CallProvider({ children }) {
     pcRef.current?.close();
     pcRef.current = null;
     pendingIceRef.current = [];
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
     remoteStreamRef.current = null;
@@ -173,7 +193,7 @@ export function CallProvider({ children }) {
       remoteStreamRef.current = incoming;
       setRemoteStream(incoming);
       updateDebug({ remoteStream: incoming.getTracks().length > 0 });
-      logCall("TRACK_RECEIVED", streamSummary(incoming));
+      logCall("REMOTE_TRACK_RECEIVED", { kind: event.track?.kind, ...streamSummary(incoming) });
       logCall("REMOTE_STREAM_SET", { tracks: incoming.getTracks().length });
     };
 
@@ -444,26 +464,84 @@ export function CallProvider({ children }) {
     setCameraOff((v) => !v);
   }, [cameraOff]);
 
+  const restoreCamera = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc) return false;
+
+    const stream = localStreamRef.current || await getMedia();
+    const cameraTrack = stream.getVideoTracks()[0];
+    const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+    if (!sender || !cameraTrack) {
+      const error = "Camera video sender unavailable";
+      logCall("CAMERA_RESTORE_FAILED", { error, hasSender: Boolean(sender), hasCameraTrack: Boolean(cameraTrack) });
+      updateDebug({ error });
+      return false;
+    }
+
+    cameraTrack.enabled = !cameraOff;
+    await sender.replaceTrack(cameraTrack);
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    setLocalStream(stream);
+    setScreenSharing(false);
+    updateDebug({ localStream: true, error: "" });
+    logCall("CAMERA_RESTORED", { trackId: cameraTrack.id, enabled: cameraTrack.enabled });
+    return true;
+  }, [cameraOff, getMedia, logCall, updateDebug]);
+
   const toggleScreenShare = useCallback(async () => {
     const pc = pcRef.current;
-    if (!pc) return;
+    if (!pc || callRef.current.status === "idle") return;
 
     if (screenSharing) {
-      const stream = await getMedia();
-      const cameraTrack = stream.getVideoTracks()[0];
-      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-      if (sender && cameraTrack) await sender.replaceTrack(cameraTrack);
-      setScreenSharing(false);
+      logCall("SCREEN_SHARE_STOPPED", { reason: "button" });
+      await restoreCamera();
       return;
     }
 
-    const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-    const screenTrack = display.getVideoTracks()[0];
-    const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-    if (sender && screenTrack) await sender.replaceTrack(screenTrack);
-    screenTrack.onended = () => setScreenSharing(false);
-    setScreenSharing(true);
-  }, [getMedia, screenSharing]);
+    if (!canShareScreen()) {
+      const error = isCapacitorAndroid()
+        ? "Screen sharing is not supported on this Android build"
+        : "Screen sharing requires a supported browser and a secure context";
+      logCall("SCREEN_SHARE_UNSUPPORTED", { error });
+      updateDebug({ error });
+      return;
+    }
+
+    try {
+      logCall("SCREEN_SHARE_START");
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const screenTrack = display.getVideoTracks()[0];
+      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
+
+      logCall("SCREEN_STREAM_CREATED", { ...streamSummary(display), trackId: screenTrack?.id });
+      if (!sender || !screenTrack) {
+        display.getTracks().forEach((track) => track.stop());
+        const error = "Screen video sender unavailable";
+        logCall("SCREEN_SHARE_FAILED", { error, hasSender: Boolean(sender), hasScreenTrack: Boolean(screenTrack) });
+        updateDebug({ error });
+        return;
+      }
+
+      await sender.replaceTrack(screenTrack);
+      screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+      screenStreamRef.current = display;
+      setLocalStream(display);
+      setScreenSharing(true);
+      updateDebug({ localStream: true, error: "" });
+      logCall("TRACK_REPLACED", { from: "camera", to: "screen", trackId: screenTrack.id });
+
+      screenTrack.onended = async () => {
+        logCall("SCREEN_SHARE_STOPPED", { reason: "browser" });
+        await restoreCamera();
+      };
+    } catch (err) {
+      const error = err.name === "NotAllowedError" ? "Screen sharing permission was dismissed" : err.message;
+      logCall("SCREEN_SHARE_FAILED", { error, name: err.name });
+      updateDebug({ error });
+      setScreenSharing(false);
+    }
+  }, [logCall, restoreCamera, screenSharing, updateDebug]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -487,6 +565,7 @@ export function CallProvider({ children }) {
     cameraOff,
     speakerOff,
     screenSharing,
+    screenShareSupported: canShareScreen(),
     debug: {
       ...debug,
       localStream: Boolean(localStream?.getTracks?.().length),
