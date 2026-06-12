@@ -32,12 +32,17 @@ function isCapacitorAndroid() {
   return Boolean(capacitor?.isNativePlatform?.() && capacitor?.getPlatform?.() === "android");
 }
 
-function canShareScreen() {
-  return Boolean(
-    !isCapacitorAndroid() &&
-    navigator.mediaDevices?.getDisplayMedia &&
-    (window.isSecureContext || isLocalhost())
-  );
+function screenShareCapability() {
+  const hasGetDisplayMedia = Boolean(navigator.mediaDevices?.getDisplayMedia);
+  const secure = Boolean(window.isSecureContext || isLocalhost());
+  const supported = Boolean(hasGetDisplayMedia && secure);
+  return {
+    supported,
+    hasGetDisplayMedia,
+    secureContext: secure,
+    capacitorAndroid: isCapacitorAndroid(),
+    platform: window.Capacitor?.getPlatform?.() || navigator.userAgent,
+  };
 }
 
 export function CallProvider({ children }) {
@@ -49,6 +54,7 @@ export function CallProvider({ children }) {
   const remoteStreamRef = useRef(null);
   const pendingIceRef = useRef([]);
   const ringTimerRef = useRef(null);
+  const facingModeRef = useRef("user");
   const [iceServers, setIceServers] = useState(FALLBACK_ICE);
   const [call, setCallState] = useState({ status: "idle" });
   const [localStream, setLocalStream] = useState(null);
@@ -58,6 +64,7 @@ export function CallProvider({ children }) {
   const [cameraOff, setCameraOff] = useState(false);
   const [speakerOff, setSpeakerOff] = useState(false);
   const [screenSharing, setScreenSharing] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState("user");
   const [debug, setDebug] = useState({
     localStream: false,
     remoteStream: false,
@@ -118,7 +125,7 @@ export function CallProvider({ children }) {
     });
   }, [updateDebug]);
 
-  const getMedia = useCallback(async () => {
+  const getCameraStream = useCallback(async (facingMode = facingModeRef.current, includeAudio = true) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       const error = "Camera and microphone APIs are unavailable";
       logCall("MEDIA_FAILED", { error });
@@ -127,33 +134,42 @@ export function CallProvider({ children }) {
 
     const q = QUALITY[quality] || QUALITY["1080p"];
     const constraints = {
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: includeAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
       video: {
         width: { ideal: q.width },
         height: { ideal: q.height },
         frameRate: { ideal: 30, max: 60 },
-        facingMode: "user",
+        facingMode: { ideal: facingMode },
       },
     };
 
     try {
-      logCall("CALL_STARTED", { quality });
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-      updateDebug({ localStream: true, error: "" });
-      logCall("MEDIA_GRANTED", streamSummary(stream));
+      logCall("CAMERA_STREAM_REQUESTED", { quality, facingMode, includeAudio });
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      logCall("CAMERA_RETRY_BASIC", { error: err.message, facingMode, includeAudio });
+      return navigator.mediaDevices.getUserMedia({ video: true, audio: includeAudio });
+    }
+  }, [logCall, quality]);
+
+  const setCameraStream = useCallback((stream) => {
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+    updateDebug({ localStream: true, error: "" });
+    logCall("MEDIA_GRANTED", streamSummary(stream));
+  }, [logCall, updateDebug]);
+
+  const getMedia = useCallback(async () => {
+    try {
+      logCall("CALL_STARTED", { quality, facingMode: facingModeRef.current });
+      const stream = await getCameraStream(facingModeRef.current, true);
+      setCameraStream(stream);
       return stream;
     } catch (err) {
-      logCall("MEDIA_RETRY_BASIC", { error: err.message });
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localStreamRef.current = stream;
-      setLocalStream(stream);
-      updateDebug({ localStream: true, error: "" });
-      logCall("MEDIA_GRANTED", streamSummary(stream));
-      return stream;
+      logCall("MEDIA_FAILED", { error: err.message });
+      throw err;
     }
-  }, [logCall, quality, updateDebug]);
+  }, [getCameraStream, logCall, quality, setCameraStream]);
 
   const addPendingIce = useCallback(async (pc) => {
     if (!pc.remoteDescription) return;
@@ -464,6 +480,54 @@ export function CallProvider({ children }) {
     setCameraOff((v) => !v);
   }, [cameraOff]);
 
+  const switchCamera = useCallback(async () => {
+    const nextFacing = facingModeRef.current === "user" ? "environment" : "user";
+    try {
+      logCall("CAMERA_SWITCH_START", { from: facingModeRef.current, to: nextFacing, screenSharing });
+      const videoOnlyStream = await getCameraStream(nextFacing, false);
+      const nextVideoTrack = videoOnlyStream.getVideoTracks()[0];
+      if (!nextVideoTrack) {
+        const error = "No camera video track returned";
+        logCall("CAMERA_SWITCH_FAILED", { error, facingMode: nextFacing });
+        updateDebug({ error });
+        return;
+      }
+
+      const previousStream = localStreamRef.current;
+      const audioTracks = previousStream?.getAudioTracks?.() || [];
+      const sender = !screenSharing ? pcRef.current?.getSenders().find((s) => s.track?.kind === "video") : null;
+      if (!screenSharing && !sender) {
+        videoOnlyStream.getTracks().forEach((track) => track.stop());
+        const error = "Camera video sender unavailable";
+        logCall("CAMERA_SWITCH_FAILED", { error });
+        updateDebug({ error });
+        return;
+      }
+
+      nextVideoTrack.enabled = !cameraOff;
+      const nextCameraStream = new MediaStream([...audioTracks, nextVideoTrack]);
+      localStreamRef.current = nextCameraStream;
+      facingModeRef.current = nextFacing;
+      setCameraFacing(nextFacing);
+      previousStream?.getVideoTracks?.().forEach((track) => track.stop());
+
+      if (!screenSharing) {
+        await sender.replaceTrack(nextVideoTrack);
+        setLocalStream(nextCameraStream);
+        logCall("TRACK_REPLACED", { from: "camera", to: "camera", facingMode: nextFacing, trackId: nextVideoTrack.id });
+      } else {
+        logCall("CAMERA_SWITCH_READY", { facingMode: nextFacing, screenShareActive: true, trackId: nextVideoTrack.id });
+      }
+
+      updateDebug({ localStream: true, error: "" });
+      logCall("CAMERA_SWITCHED", { facingMode: nextFacing });
+    } catch (err) {
+      const error = err.name === "NotAllowedError" ? "Camera switch permission was dismissed" : err.message;
+      logCall("CAMERA_SWITCH_FAILED", { error, name: err.name });
+      updateDebug({ error });
+    }
+  }, [cameraOff, getCameraStream, logCall, screenSharing, updateDebug]);
+
   const restoreCamera = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc) return false;
@@ -499,11 +563,13 @@ export function CallProvider({ children }) {
       return;
     }
 
-    if (!canShareScreen()) {
-      const error = isCapacitorAndroid()
-        ? "Screen sharing is not supported on this Android build"
-        : "Screen sharing requires a supported browser and a secure context";
-      logCall("SCREEN_SHARE_UNSUPPORTED", { error });
+    const capability = screenShareCapability();
+    logCall("SCREEN_SHARE_CAPABILITY", capability);
+    if (!capability.supported) {
+      const error = !capability.hasGetDisplayMedia
+        ? "This browser does not expose screen sharing"
+        : "Screen sharing requires HTTPS or localhost";
+      logCall("SCREEN_SHARE_UNSUPPORTED", { error, ...capability });
       updateDebug({ error });
       return;
     }
@@ -563,9 +629,10 @@ export function CallProvider({ children }) {
     setQuality,
     muted,
     cameraOff,
+    cameraFacing,
     speakerOff,
     screenSharing,
-    screenShareSupported: canShareScreen(),
+    screenShareSupported: screenShareCapability().supported,
     debug: {
       ...debug,
       localStream: Boolean(localStream?.getTracks?.().length),
@@ -581,9 +648,10 @@ export function CallProvider({ children }) {
     },
     toggleMute,
     toggleCamera,
+    switchCamera,
     toggleSpeaker: () => setSpeakerOff((v) => !v),
     toggleScreenShare,
-  }), [acceptCall, call, cameraOff, cleanup, debug, endCall, localStream, muted, quality, rejectCall, remoteStream, screenSharing, speakerOff, setCall, startCall, toggleCamera, toggleMute, toggleScreenShare]);
+  }), [acceptCall, call, cameraFacing, cameraOff, cleanup, debug, endCall, localStream, muted, quality, rejectCall, remoteStream, screenSharing, speakerOff, setCall, startCall, switchCamera, toggleCamera, toggleMute, toggleScreenShare]);
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
 }
