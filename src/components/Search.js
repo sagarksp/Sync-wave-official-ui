@@ -14,17 +14,29 @@ export default function Search() {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recent, setRecent] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("syncwave_recent_searches") || "[]");
+    } catch (err) {
+      return [];
+    }
+  });
   const debounceRef = useRef(null);
+  const trending = ["Arijit Singh", "Hindi Hits", "Lo-fi Chill", "Punjabi Pop", "Workout Mix", "English Hits"];
 
   const doSearch = async (q) => {
     if (!q.trim()) {
       setResults([]);
       return;
     }
+    const term = q.trim();
+    const nextRecent = [term, ...recent.filter((item) => item.toLowerCase() !== term.toLowerCase())].slice(0, 8);
+    setRecent(nextRecent);
+    localStorage.setItem("syncwave_recent_searches", JSON.stringify(nextRecent));
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(q)}&limit=25`);
+      const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(term)}&limit=25`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setResults(data.results || []);
@@ -78,14 +90,22 @@ export default function Search() {
 
       {error && <div className="search-error">{error}</div>}
 
-      {!query && (
-        <div className="search-suggestions">
-          <div className="suggestion-label">Try searching</div>
-          {["Arijit Singh", "Shape of You", "Bollywood 2024", "English Hits", "Lofi Chill"].map((s) => (
-            <button key={s} className="suggestion-chip" onClick={() => { setQuery(s); doSearch(s); }}>
-              {s}
-            </button>
-          ))}
+      {!query && !results.length && (
+        <div className="search-discovery">
+          {recent.length > 0 && (
+            <section className="home-section">
+              <div className="section-head"><div><h2>Recent Searches</h2><p>Jump back into what you looked for.</p></div></div>
+              <div className="chip-row">
+                {recent.map((s) => <button key={s} className="suggestion-chip" onClick={() => { setQuery(s); doSearch(s); }}>{s}</button>)}
+              </div>
+            </section>
+          )}
+          <section className="home-section">
+            <div className="section-head"><div><h2>Trending Searches</h2><p>Fresh starting points for your session.</p></div></div>
+            <div className="chip-row">
+              {trending.map((s) => <button key={s} className="suggestion-chip" onClick={() => { setQuery(s); doSearch(s); }}>{s}</button>)}
+            </div>
+          </section>
         </div>
       )}
 
@@ -103,8 +123,10 @@ export default function Search() {
                 <span className="result-title">{song.title}</span>
                 <span className="result-artist">{song.artist}</span>
               </div>
-              <span className="result-lang">{song.language}</span>
-              <span className="result-dur">{formatDur(song.duration)}</span>
+              <div className="result-tags">
+                {song.language && <span>{song.language}</span>}
+                <span>{formatDur(song.duration)}</span>
+              </div>
               <div className="result-actions">
                 <button className="result-btn play-btn" onClick={() => playSong(song)} title="Play now">Play</button>
                 <DownloadButton song={song} className="result-btn download-btn" />

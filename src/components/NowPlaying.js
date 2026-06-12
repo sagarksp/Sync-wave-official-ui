@@ -11,6 +11,7 @@ export default function NowPlaying() {
   const { state } = useSocket();
   const song = state?.currentSong;
   const [pos, setPos] = useState(0);
+  const [autoplay, setAutoplay] = useState(true);
 
   useEffect(() => {
     setPos(state?.position || 0);
@@ -29,28 +30,64 @@ export default function NowPlaying() {
   }
 
   const pct = song.duration ? (pos / song.duration) * 100 : 0;
+  const upNext = (state?.queue || []).filter((item) => item.id !== song.id).slice(0, 5);
 
   return (
-    <div className="now-playing">
-      <div className="np-artwork-wrap">
-        <img src={song.cover} alt={song.title} className={`np-artwork ${state?.isPlaying ? "rotating" : ""}`} onError={(e) => { e.target.src = "https://via.placeholder.com/240/1a1a2e/fff?text=SW"; }} />
-      </div>
-      <div className="np-info">
-        <div className="np-song-title">{song.title}</div>
-        <div className="np-song-artist">{song.artist}</div>
-        {song.album && <div className="np-song-album">{song.album}</div>}
-        {song.language && <span className="np-lang-badge">{song.language}</span>}
-        <DownloadButton song={song} className="np-download-btn download-btn" />
-      </div>
-      <div className="np-progress">
-        <div className="np-prog-bar"><div className="np-prog-fill" style={{ width: `${pct}%` }} /></div>
-        <div className="np-times"><span>{fmt(pos)}</span><span>{fmt(song.duration)}</span></div>
-      </div>
-      <div className="np-visualizer">
-        {Array.from({ length: 18 }).map((_, i) => (
-          <div key={i} className={`viz-bar ${state?.isPlaying ? "active" : ""}`} style={{ animationDelay: `${(i * 83) % 700}ms`, height: `${12 + ((i * 41 + 7) % 44)}px` }} />
-        ))}
-      </div>
+    <div className="now-playing" style={{ "--art": `url(${song.cover})` }}>
+      <section className="np-main">
+        <div className="np-artwork-wrap">
+          <img src={song.cover} alt={song.title} className="np-artwork" onError={(e) => { e.target.src = "https://via.placeholder.com/360/151923/fff?text=SW"; }} />
+        </div>
+        <div className="np-info">
+          <span className="eyebrow">Now Playing</span>
+          <div className="np-song-title">{song.title}</div>
+          <div className="np-song-artist">{song.artist}</div>
+          {song.album && <div className="np-song-album">{song.album}</div>}
+          <div className="np-actions">
+            {song.language && <span className="np-lang-badge">{song.language}</span>}
+            <DownloadButton song={song} className="np-download-btn download-btn" />
+          </div>
+          <div className="np-progress">
+            <div className="np-prog-bar"><div className="np-prog-fill" style={{ width: `${pct}%` }} /></div>
+            <div className="np-times"><span>{fmt(pos)}</span><span>{fmt(song.duration)}</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="np-lower">
+        <div className="lyrics-card">
+          <div className="section-head compact-head">
+            <div>
+              <h2>Lyrics</h2>
+              <p>Future-ready lyrics panel</p>
+            </div>
+          </div>
+          <div className="lyrics-placeholder">Lyrics will appear here when available.</div>
+        </div>
+        <div className="up-next-card">
+          <div className="section-head compact-head">
+            <div>
+              <h2>Up Next</h2>
+              <p>{autoplay ? "Autoplay continues with related tracks." : "Autoplay is paused."}</p>
+            </div>
+            <button className={`toggle-pill ${autoplay ? "on" : ""}`} onClick={() => setAutoplay((v) => !v)}>Autoplay {autoplay ? "On" : "Off"}</button>
+          </div>
+          <div className="np-visualizer">
+            {Array.from({ length: 24 }).map((_, i) => (
+              <div key={i} className={`viz-bar ${state?.isPlaying ? "active" : ""}`} style={{ animationDelay: `${(i * 83) % 700}ms`, height: `${12 + ((i * 41 + 7) % 44)}px` }} />
+            ))}
+          </div>
+          <div className="mini-list">
+            {upNext.map((item) => (
+              <div key={item.id} className="mini-song">
+                <img src={item.cover} alt="" />
+                <div><strong>{item.title}</strong><span>{item.artist}</span></div>
+              </div>
+            ))}
+            {!upNext.length && <div className="queue-empty">Queue similar songs to fill Up Next.</div>}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

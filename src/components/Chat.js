@@ -8,6 +8,7 @@ function time(value) {
 export default function Chat({ deviceName }) {
   const { emit, messages, typingDevices } = useSocket();
   const [text, setText] = useState("");
+  const [reactions, setReactions] = useState({});
   const bottomRef = useRef(null);
   const typingRef = useRef(null);
 
@@ -42,13 +43,21 @@ export default function Chat({ deviceName }) {
         {messages.length === 0 && <div className="chat-empty">Messages from your devices appear here.</div>}
         {messages.map((m) => {
           const mine = m.deviceName === deviceName;
+          const key = m._id || `${m.timestamp}-${m.message}`;
           return (
-            <div key={m._id || `${m.timestamp}-${m.message}`} className={`chat-message ${mine ? "mine" : ""}`}>
+            <div key={key} className={`chat-message ${mine ? "mine" : ""}`}>
               <div className="chat-meta">
                 <span>{m.deviceName}</span>
                 <time>{time(m.timestamp)}</time>
               </div>
               <div className="chat-bubble">{m.message}</div>
+              <div className="reaction-row">
+                {["Like", "Fire", "Love"].map((label) => (
+                  <button key={label} onClick={() => setReactions((prev) => ({ ...prev, [key]: prev[key] === label ? "" : label }))} className={reactions[key] === label ? "active" : ""}>
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           );
         })}
@@ -60,6 +69,9 @@ export default function Chat({ deviceName }) {
       </div>
 
       <form className="chat-form" onSubmit={send}>
+        <button type="button" className="emoji-btn" onClick={() => setText((value) => `${value}:)`)}>
+          Emoji
+        </button>
         <input value={text} onChange={handleChange} placeholder="Message your devices" maxLength={1000} />
         <button disabled={!text.trim()}>Send</button>
       </form>

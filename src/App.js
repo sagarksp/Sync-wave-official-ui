@@ -4,6 +4,7 @@ import { CallProvider } from "./context/CallContext";
 import { DownloadProvider } from "./context/DownloadContext";
 import { apiFetch, clearStoredAuth, getDeviceId, getStoredAuth, storeAuth } from "./api";
 import Login from "./components/Login";
+import Home from "./components/Home";
 import Player from "./components/Player";
 import Queue from "./components/Queue";
 import Search from "./components/Search";
@@ -11,6 +12,7 @@ import Devices from "./components/Devices";
 import NowPlaying from "./components/NowPlaying";
 import Chat from "./components/Chat";
 import Downloads from "./components/Downloads";
+import Playlists from "./components/Playlists";
 import CallModal from "./components/CallModal";
 import "./App.css";
 
@@ -20,10 +22,21 @@ function SyncToast({ msg }) {
 }
 
 function Shell({ auth, onLogout }) {
-  const { state, connected } = useSocket();
-  const [tab, setTab] = useState("search");
+  const { state, connected, emit } = useSocket();
+  const [tab, setTab] = useState("home");
   const [toast, setToast] = useState("");
   const prevRef = useRef(null);
+  const [playlists, setPlaylists] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("syncwave_playlists") || "[]");
+    } catch (err) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("syncwave_playlists", JSON.stringify(playlists));
+  }, [playlists]);
 
   useEffect(() => {
     if (!state) return;
@@ -58,6 +71,55 @@ function Shell({ auth, onLogout }) {
     }
   }, [state]);
 
+  const playSong = useCallback((song) => {
+    if (!song) return;
+    const currentQueue = state?.queue || [];
+    const nextQueue = currentQueue.some((item) => item.id === song.id) ? currentQueue : [song, ...currentQueue].slice(0, 100);
+    emit("set_queue", { queue: nextQueue });
+    emit("play_song", { song });
+  }, [emit, state?.queue]);
+
+  const createPlaylist = useCallback((name) => {
+    const playlist = { id: `playlist_${Date.now()}`, name, songs: [], createdAt: Date.now() };
+    setPlaylists((prev) => [playlist, ...prev]);
+    return playlist;
+  }, []);
+
+  const renamePlaylist = useCallback((id, name) => {
+    setPlaylists((prev) => prev.map((playlist) => playlist.id === id ? { ...playlist, name } : playlist));
+  }, []);
+
+  const deletePlaylist = useCallback((id) => {
+    setPlaylists((prev) => prev.filter((playlist) => playlist.id !== id));
+  }, []);
+
+  const addSongToPlaylist = useCallback((id, song) => {
+    setPlaylists((prev) => prev.map((playlist) => {
+      if (playlist.id !== id || !song?.id || playlist.songs.some((item) => item.id === song.id)) return playlist;
+      return { ...playlist, songs: [...playlist.songs, song] };
+    }));
+  }, []);
+
+  const removeSongFromPlaylist = useCallback((id, songId) => {
+    setPlaylists((prev) => prev.map((playlist) => playlist.id === id ? { ...playlist, songs: playlist.songs.filter((song) => song.id !== songId) } : playlist));
+  }, []);
+
+  const reorderPlaylistSong = useCallback((id, from, to) => {
+    setPlaylists((prev) => prev.map((playlist) => {
+      if (playlist.id !== id || to < 0 || to >= playlist.songs.length) return playlist;
+      const songs = [...playlist.songs];
+      const [item] = songs.splice(from, 1);
+      songs.splice(to, 0, item);
+      return { ...playlist, songs };
+    }));
+  }, []);
+
+  const playPlaylist = useCallback((playlist) => {
+    if (!playlist?.songs?.length) return;
+    emit("set_queue", { queue: playlist.songs.slice(0, 100) });
+    emit("play_song", { song: playlist.songs[0] });
+  }, [emit]);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -66,10 +128,12 @@ function Shell({ auth, onLogout }) {
           <span className="logo-name">SyncWave</span>
         </div>
         <div className="header-tabs">
-          {["search", "queue", "downloads", "chat", "now"].map((item) => (
+          {["home", "search", "queue", "playlists", "downloads", "chat", "now"].map((item) => (
             <button key={item} className={`htab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
+              {item === "home" && "Home"}
               {item === "search" && "Search"}
               {item === "queue" && <>Queue {state?.queue?.length > 0 && <span className="htab-badge">{state.queue.length}</span>}</>}
+              {item === "playlists" && <>Playlists {playlists.length > 0 && <span className="htab-badge">{playlists.length}</span>}</>}
               {item === "downloads" && "Downloads"}
               {item === "chat" && "Chat"}
               {item === "now" && "Now"}
@@ -86,8 +150,21 @@ function Shell({ auth, onLogout }) {
         </aside>
 
         <section className="app-content">
+          {tab === "home" && <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={setTab} />}
           {tab === "search" && <Search />}
           {tab === "queue" && <Queue />}
+          {tab === "playlists" && (
+            <Playlists
+              playlists={playlists}
+              onCreate={createPlaylist}
+              onRename={renamePlaylist}
+              onDelete={deletePlaylist}
+              onAddSong={addSongToPlaylist}
+              onRemoveSong={removeSongFromPlaylist}
+              onReorder={reorderPlaylistSong}
+              onPlayPlaylist={playPlaylist}
+            />
+          )}
           {tab === "downloads" && <Downloads />}
           {tab === "chat" && <Chat deviceName={auth.deviceName} />}
           {tab === "now" && <NowPlaying />}

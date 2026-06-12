@@ -15,9 +15,20 @@ export default function Queue() {
 
   const setQueue = (next) => emit("set_queue", { queue: next });
   const play = (song) => emit("play_song", { song });
+  const totalDuration = queue.reduce((sum, song) => sum + (Number(song.duration) || 0), 0);
   const remove = (e, id) => {
     e.stopPropagation();
     setQueue(queue.filter((s) => s.id !== id));
+  };
+
+  const playNext = (e, idx) => {
+    e.stopPropagation();
+    if (idx <= 0) return;
+    const next = [...queue];
+    const [item] = next.splice(idx, 1);
+    const currentIdx = Math.max(0, next.findIndex((song) => song.id === currentId));
+    next.splice(currentIdx + 1, 0, item);
+    setQueue(next);
   };
 
   const move = (e, from, to) => {
@@ -46,10 +57,18 @@ export default function Queue() {
       <div className="panel-header">
         <span className="panel-title">Queue</span>
         <div className="panel-actions">
-          <span className="panel-badge">{queue.length}</span>
+          <span className="panel-badge">{queue.length} songs · {fmt(totalDuration)}</span>
           {queue.length > 0 && <button className="clear-btn" onClick={() => setQueue([])}>Clear</button>}
         </div>
       </div>
+
+      {queue.length > 0 && (
+        <div className="queue-stats">
+          <div><strong>{queue.length}</strong><span>Songs</span></div>
+          <div><strong>{fmt(totalDuration)}</strong><span>Duration</span></div>
+          <div><strong>{currentId ? "Live" : "Idle"}</strong><span>Status</span></div>
+        </div>
+      )}
 
       {queue.length === 0 ? (
         <div className="queue-empty">
@@ -86,6 +105,8 @@ export default function Queue() {
                   <span className="qi-dur">{fmt(song.duration)}</span>
                   <div className="qi-actions">
                     <DownloadButton song={song} className="qi-btn download-btn" />
+                    <button className="qi-btn" onClick={(e) => playNext(e, idx)}>Next</button>
+                    <button className="qi-btn" onClick={(e) => move(e, idx, 0)}>Top</button>
                     <button className="qi-btn" onClick={(e) => move(e, idx, idx - 1)}>Up</button>
                     <button className="qi-btn" onClick={(e) => move(e, idx, idx + 1)}>Down</button>
                     <button className="qi-btn del" onClick={(e) => remove(e, song.id)}>Remove</button>

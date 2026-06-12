@@ -29,6 +29,10 @@ export default function Player() {
   const [localPos, setLocalPos] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  const [bufferedPct, setBufferedPct] = useState(0);
+  const [shuffle, setShuffle] = useState(false);
+  const [repeatMode, setRepeatMode] = useState("off");
+  const [favorite, setFavorite] = useState(false);
 
   const song = state?.currentSong;
 
@@ -135,6 +139,17 @@ export default function Player() {
     if (audio) audio.volume = (state?.volume ?? 80) / 100;
   }, [state?.volume]);
 
+  const updateBuffered = () => {
+    const audio = audioRef.current;
+    const duration = song?.duration || audio?.duration || 0;
+    if (!audio || !duration || !audio.buffered?.length) {
+      setBufferedPct(0);
+      return;
+    }
+    const end = audio.buffered.end(audio.buffered.length - 1);
+    setBufferedPct(Math.min(100, (end / duration) * 100));
+  };
+
   useEffect(() => {
     const interval = window.setInterval(() => {
       const audio = audioRef.current;
@@ -164,6 +179,22 @@ export default function Player() {
     emit(event, data);
   };
 
+  const handleEnded = () => {
+    const audio = audioRef.current;
+    if (repeatMode === "one" && audio) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      return;
+    }
+    if (shuffle && state?.queue?.length > 1) {
+      const options = state.queue.filter((item) => item.id !== song?.id);
+      const next = options[Math.floor(Math.random() * options.length)];
+      if (next) emitControl("play_song", { song: next });
+      return;
+    }
+    emitControl("next_song");
+  };
+
   const handleSeekEnd = (e) => {
     const pos = Number(e.target.value);
     setDragging(false);
@@ -179,7 +210,9 @@ export default function Player() {
         onTimeUpdate={() => {
           if (!dragging) setLocalPos(audioRef.current?.currentTime || 0);
         }}
-        onEnded={() => emitControl("next_song")}
+        onProgress={updateBuffered}
+        onLoadedMetadata={updateBuffered}
+        onEnded={handleEnded}
         onWaiting={() => {
           debug(deviceName, "PLAYER_STATE", { state: "waiting" });
           setBuffering(true);
@@ -208,15 +241,26 @@ export default function Player() {
 
       <div className="player-center">
         <div className="player-ctrls">
-          <button className="ctrl" onClick={() => emitControl("prev_song")} disabled={!song} title="Previous">Prev</button>
+          <button className={`icon-ctrl ${shuffle ? "active" : ""}`} onClick={() => setShuffle((v) => !v)} disabled={!song} title="Shuffle" aria-label="Shuffle">Shuffle</button>
+          <button className="icon-ctrl" onClick={() => emitControl("prev_song")} disabled={!song} title="Previous" aria-label="Previous">Prev</button>
           <button className="ctrl play" onClick={() => emitControl("play_pause", { isPlaying: !state?.isPlaying })} disabled={!song}>
             {buffering ? "..." : state?.isPlaying ? "Pause" : "Play"}
           </button>
-          <button className="ctrl" onClick={() => emitControl("next_song")} disabled={!song} title="Next">Next</button>
+          <button className="icon-ctrl" onClick={() => emitControl("next_song")} disabled={!song} title="Next" aria-label="Next">Next</button>
+          <button
+            className={`icon-ctrl ${repeatMode !== "off" ? "active" : ""}`}
+            onClick={() => setRepeatMode((mode) => mode === "off" ? "one" : mode === "one" ? "all" : "off")}
+            disabled={!song}
+            title={repeatMode === "one" ? "Repeat One" : repeatMode === "all" ? "Repeat All" : "Repeat"}
+            aria-label="Repeat"
+          >
+            {repeatMode === "one" ? "One" : repeatMode === "all" ? "All" : "Repeat"}
+          </button>
         </div>
         <div className="player-progress">
           <span className="ptime">{fmt(localPos)}</span>
           <div className="ptrack">
+            <div className="pbuffer" style={{ width: `${bufferedPct}%` }} />
             <div className="pfill" style={{ width: `${progress}%` }} />
             <input
               type="range"
@@ -238,6 +282,10 @@ export default function Player() {
       </div>
 
       <div className="player-right">
+        <button className={`sync-btn favorite-btn ${favorite ? "on" : ""}`} onClick={() => setFavorite((v) => !v)} disabled={!song}>
+          {favorite ? "Liked" : "Like"}
+        </button>
+        <button className="sync-btn" disabled={!song}>Playlist</button>
         {song && <DownloadButton song={song} className="sync-btn download-btn" />}
         <button className={`sync-btn ${state?.syncEnabled ? "on" : "off"}`} onClick={() => emitControl("toggle_sync", { syncEnabled: !state?.syncEnabled })}>
           {state?.syncEnabled ? "Live Sync" : "Sync Off"}
