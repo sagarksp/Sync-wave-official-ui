@@ -10,7 +10,11 @@ function formatTimer(start) {
 function StreamVideo({ stream, muted, className }) {
   const ref = useRef(null);
   useEffect(() => {
-    if (ref.current && stream) ref.current.srcObject = stream;
+    const video = ref.current;
+    if (!video || !stream) return;
+    video.srcObject = stream;
+    const playPromise = video.play();
+    if (playPromise?.catch) playPromise.catch((err) => console.log("[SyncWave Call] VIDEO_PLAY_BLOCKED", err.message));
   }, [stream]);
   return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
 }
@@ -56,6 +60,15 @@ export default function CallModal() {
             <option value="720p">720p</option>
             <option value="1080p">1080p</option>
           </select>
+        </div>
+
+        <div className="call-debug">
+          <div><span>Local Stream</span><strong>{call.debug.localStream ? "Yes" : "No"}</strong></div>
+          <div><span>Remote Stream</span><strong>{call.debug.remoteStream ? "Yes" : "No"}</strong></div>
+          <div><span>Peer Connection</span><strong>{call.debug.peerConnection}</strong></div>
+          <div><span>ICE State</span><strong>{call.debug.iceState}</strong></div>
+          <div><span>Last Event</span><strong>{call.debug.lastEvent || "none"}</strong></div>
+          {call.debug.error && <div className="call-debug-error"><span>Error</span><strong>{call.debug.error}</strong></div>}
         </div>
 
         <div className="call-local">
