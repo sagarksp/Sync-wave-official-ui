@@ -24,7 +24,7 @@ function streamSummary(stream) {
 }
 
 export function CallProvider({ children }) {
-  const { emit, on, off, deviceId, connected } = useSocket();
+  const { emit, on, off, deviceId, deviceName, socketId, connected } = useSocket();
   const pcRef = useRef(null);
   const callRef = useRef({ status: "idle" });
   const localStreamRef = useRef(null);
@@ -58,9 +58,9 @@ export function CallProvider({ children }) {
   }, []);
 
   const logCall = useCallback((event, details = {}) => {
-    console.log(`[SyncWave Call] ${event}`, details);
+    console.log(`[SyncWave Call] ${event}`, { socketId, deviceId, deviceName, ...details });
     setDebug((prev) => ({ ...prev, lastEvent: event, error: details.error || prev.error || "" }));
-  }, []);
+  }, [deviceId, deviceName, socketId]);
 
   const updateDebug = useCallback((patch) => {
     setDebug((prev) => ({ ...prev, ...patch }));
@@ -146,9 +146,15 @@ export function CallProvider({ children }) {
   }, [logCall]);
 
   const ensurePeer = useCallback(async (targetDeviceId, callId) => {
-    if (pcRef.current) return pcRef.current;
+    if (pcRef.current?.__syncwaveCallId === callId) return pcRef.current;
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+      pendingIceRef.current = [];
+    }
 
     const pc = new RTCPeerConnection({ iceServers });
+    pc.__syncwaveCallId = callId;
     pcRef.current = pc;
     updateDebug({
       peerConnection: pc.connectionState,
@@ -175,6 +181,8 @@ export function CallProvider({ children }) {
       updateDebug({ peerConnection: pc.connectionState });
       logCall("PEER_STATE", { state: pc.connectionState });
       if (pc.connectionState === "connected") {
+        const role = callRef.current.direction === "incoming" ? "RECEIVER" : "CALLER";
+        console.log(`[${role}] PEER_CONNECTED`, { socketId, deviceId, deviceName, callId, targetDeviceId });
         setCall((prev) => ({ ...prev, status: "connected", connectedAt: prev.connectedAt || Date.now() }));
       } else if (["disconnected", "failed"].includes(pc.connectionState)) {
         setCall((prev) => ({ ...prev, status: prev.status === "idle" ? "idle" : "reconnecting" }));
@@ -192,7 +200,7 @@ export function CallProvider({ children }) {
       logCall("TRACK_ADDED", { kind: track.kind, enabled: track.enabled });
     });
     return pc;
-  }, [emit, getMedia, iceServers, logCall, setCall, updateDebug]);
+  }, [deviceId, deviceName, emit, getMedia, iceServers, logCall, setCall, socketId, updateDebug]);
 
   const applySenderQuality = useCallback(async () => {
     const pc = pcRef.current;
@@ -214,17 +222,31 @@ export function CallProvider({ children }) {
 
   const startCall = useCallback(async (target) => {
     if (!target?.deviceId) return;
+    if (target.deviceId === deviceId) {
+      const error = "Cannot call this device";
+      logCall("SELF_CALL_BLOCKED", { error, targetDeviceId: target.deviceId });
+      updateDebug({ error });
+      return;
+    }
     cleanup();
     const callId = makeCallId(deviceId);
     setCall({ status: "calling", callId, peer: target, direction: "outgoing", startedAt: Date.now() });
     try {
       await getMedia();
+      console.log("[CALLER] CALL_SENT", {
+        socketId,
+        deviceId,
+        deviceName,
+        callId,
+        receiverDeviceId: target.deviceId,
+        receiverDeviceName: target.deviceName,
+      });
       emit("call_user", { targetDeviceId: target.deviceId, callId, media: { audio: true, video: true } });
     } catch (err) {
       updateDebug({ error: err.message });
       setCall({ status: "failed", peer: target, callId, lastReason: err.message });
     }
-  }, [cleanup, deviceId, emit, getMedia, setCall, updateDebug]);
+  }, [cleanup, deviceId, deviceName, emit, getMedia, logCall, setCall, socketId, updateDebug]);
 
   const acceptCall = useCallback(async () => {
     const activeCall = callRef.current;
@@ -233,6 +255,14 @@ export function CallProvider({ children }) {
     try {
       await ensurePeer(activeCall.peer.deviceId, activeCall.callId);
       setCall((prev) => ({ ...prev, status: "connecting", direction: "incoming", startedAt: Date.now() }));
+      console.log("[RECEIVER] CALL_ACCEPTED", {
+        socketId,
+        deviceId,
+        deviceName,
+        callId: activeCall.callId,
+        callerDeviceId: activeCall.peer.deviceId,
+        callerDeviceName: activeCall.peer.deviceName,
+      });
       emit("accept_call", { targetDeviceId: activeCall.peer.deviceId, callId: activeCall.callId });
     } catch (err) {
       logCall("MEDIA_FAILED", { error: err.message });
@@ -240,7 +270,7 @@ export function CallProvider({ children }) {
       updateDebug({ error: err.message });
       setCall({ status: "failed", peer: activeCall.peer, callId: activeCall.callId, lastReason: err.message });
     }
-  }, [emit, ensurePeer, logCall, setCall, updateDebug]);
+  }, [deviceId, deviceName, emit, ensurePeer, logCall, setCall, socketId, updateDebug]);
 
   const rejectCall = useCallback((reason = "rejected") => {
     const activeCall = callRef.current;
@@ -263,8 +293,19 @@ export function CallProvider({ children }) {
   useEffect(() => {
     if (!connected) return undefined;
 
+    const isFromSelf = (from) => from?.deviceId === deviceId || (socketId && from?.socketId === socketId);
+    const isCurrentCallSignal = (payload = {}) => {
+      const activeCall = callRef.current;
+      return Boolean(payload.callId && activeCall.callId && payload.callId === activeCall.callId);
+    };
+
     const onIncoming = ({ callId, from, media }) => {
       const activeCall = callRef.current;
+      if (isFromSelf(from)) {
+        logCall("SELF_SIGNAL_IGNORED", { event: "incoming_call", callId, from });
+        return;
+      }
+      console.log("[RECEIVER] CALL_RECEIVED", { socketId, deviceId, deviceName, callId, from });
       logCall("INCOMING_CALL", { callId, from });
       if (activeCall.status !== "idle" && activeCall.status !== "missed" && activeCall.status !== "failed") {
         emit("reject_call", { targetDeviceId: from.deviceId, callId, reason: "busy" });
@@ -280,6 +321,10 @@ export function CallProvider({ children }) {
 
     const onAccepted = async ({ callId, from }) => {
       try {
+        if (isFromSelf(from) || !isCurrentCallSignal({ callId })) {
+          logCall("STALE_SIGNAL_IGNORED", { event: "accept_call", callId, from });
+          return;
+        }
         logCall("ACCEPT_RECEIVED", { callId, from });
         setCall((prev) => ({ ...prev, status: "connecting", peer: from, callId }));
         const pc = await ensurePeer(from.deviceId, callId);
@@ -296,6 +341,10 @@ export function CallProvider({ children }) {
 
     const onOffer = async ({ callId, from, offer }) => {
       try {
+        if (isFromSelf(from) || !isCurrentCallSignal({ callId })) {
+          logCall("STALE_SIGNAL_IGNORED", { event: "offer", callId, from });
+          return;
+        }
         logCall("OFFER_RECEIVED", { callId, from });
         const pc = await ensurePeer(from.deviceId, callId);
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -311,9 +360,14 @@ export function CallProvider({ children }) {
       }
     };
 
-    const onAnswer = async ({ answer }) => {
+    const onAnswer = async ({ callId, from, answer }) => {
       try {
-        logCall("ANSWER_RECEIVED", { type: answer?.type });
+        if (isFromSelf(from) || !isCurrentCallSignal({ callId })) {
+          logCall("STALE_SIGNAL_IGNORED", { event: "answer", callId, from });
+          return;
+        }
+        console.log("[CALLER] ANSWER_RECEIVED", { socketId, deviceId, deviceName, callId, from, type: answer?.type });
+        logCall("ANSWER_RECEIVED", { callId, from, type: answer?.type });
         if (!pcRef.current) return;
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
         await addPendingIce(pcRef.current);
@@ -323,8 +377,12 @@ export function CallProvider({ children }) {
       }
     };
 
-    const onIce = async ({ candidate }) => {
+    const onIce = async ({ callId, from, candidate }) => {
       try {
+        if (isFromSelf(from) || !isCurrentCallSignal({ callId })) {
+          logCall("STALE_SIGNAL_IGNORED", { event: "ice_candidate", callId, from });
+          return;
+        }
         logCall("ICE_RECEIVED", { candidate: candidate?.candidate });
         if (!pcRef.current?.remoteDescription) {
           pendingIceRef.current.push(candidate);
@@ -336,10 +394,24 @@ export function CallProvider({ children }) {
       }
     };
 
-    const onEnd = ({ reason }) => {
-      logCall("CALL_ENDED_REMOTE", { reason });
+    const onEnd = ({ callId, from, reason }) => {
+      if (isFromSelf(from) || !isCurrentCallSignal({ callId })) {
+        logCall("STALE_SIGNAL_IGNORED", { event: "call_end", callId, from, reason });
+        return;
+      }
+      logCall("CALL_ENDED_REMOTE", { callId, from, reason });
       cleanup();
       setCall({ status: "idle", lastReason: reason || "ended" });
+    };
+
+    const onUnavailable = ({ callId, targetDeviceId, reason }) => {
+      if (!isCurrentCallSignal({ callId })) {
+        logCall("STALE_SIGNAL_IGNORED", { event: "call_unavailable", callId, targetDeviceId, reason });
+        return;
+      }
+      logCall("CALL_UNAVAILABLE", { callId, targetDeviceId, reason });
+      cleanup();
+      setCall({ status: "idle", lastReason: reason || "unavailable" });
     };
 
     on("incoming_call", onIncoming);
@@ -349,7 +421,7 @@ export function CallProvider({ children }) {
     on("ice_candidate", onIce);
     on("reject_call", onEnd);
     on("end_call", onEnd);
-    on("call_unavailable", onEnd);
+    on("call_unavailable", onUnavailable);
     return () => {
       off("incoming_call", onIncoming);
       off("accept_call", onAccepted);
@@ -358,9 +430,9 @@ export function CallProvider({ children }) {
       off("ice_candidate", onIce);
       off("reject_call", onEnd);
       off("end_call", onEnd);
-      off("call_unavailable", onEnd);
+      off("call_unavailable", onUnavailable);
     };
-  }, [addPendingIce, applySenderQuality, cleanup, connected, emit, ensurePeer, logCall, off, on, setCall, updateDebug]);
+  }, [addPendingIce, applySenderQuality, cleanup, connected, deviceId, deviceName, emit, ensurePeer, logCall, off, on, setCall, socketId, updateDebug]);
 
   const toggleMute = useCallback(() => {
     localStreamRef.current?.getAudioTracks().forEach((track) => { track.enabled = muted; });
