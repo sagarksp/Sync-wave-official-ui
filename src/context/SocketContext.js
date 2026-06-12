@@ -40,7 +40,6 @@ export function SocketProvider({ children, auth, onSocketError }) {
         DEVICE_NAME: auth.deviceName,
         action: s.lastAction,
         version: s.version,
-        hostDeviceName: s.hostDeviceName,
         SERVER_POSITION: s.position,
       });
       setState(s);
@@ -48,10 +47,6 @@ export function SocketProvider({ children, auth, onSocketError }) {
     socket.on("messages_history", (items) => setMessages(items || []));
     socket.on("chat_message", (item) => setMessages((prev) => [...prev, item].slice(-120)));
     socket.on("typing", ({ devices }) => setTypingDevices(devices || []));
-    socket.on("control_rejected", (info) => {
-      debug(auth.deviceName, "SOCKET_RECEIVED:control_rejected", info);
-      onSocketError?.(`${info.action} is controlled by ${info.hostDeviceName || "host device"}`);
-    });
     socket.on("device_event", (event) => {
       setState((prev) => prev ? { ...prev, lastDeviceEvent: event } : prev);
     });

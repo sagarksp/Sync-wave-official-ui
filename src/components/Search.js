@@ -9,7 +9,7 @@ function formatDur(sec) {
 }
 
 export default function Search() {
-  const { emit, state, deviceId, deviceName } = useSocket();
+  const { emit, state } = useSocket();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,11 +43,6 @@ export default function Search() {
   };
 
   const playSong = (song) => {
-    const isHost = !state?.hostDeviceId || state.hostDeviceId === deviceId;
-    if (!isHost) {
-      console.log(`[${deviceName || "SyncWave Device"}] PLAY_SONG_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
-      return;
-    }
     if (!song.streamUrl) {
       alert("This song has no stream URL available.");
       return;
@@ -61,11 +56,6 @@ export default function Search() {
   };
 
   const addToQueue = (song) => {
-    const isHost = !state?.hostDeviceId || state.hostDeviceId === deviceId;
-    if (!isHost) {
-      console.log(`[${deviceName || "SyncWave Device"}] SET_QUEUE_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
-      return;
-    }
     const currentQueue = state?.queue || [];
     if (currentQueue.find((s) => s.id === song.id)) return;
     emit("set_queue", { queue: [...currentQueue, song].slice(0, 100) });

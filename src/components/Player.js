@@ -20,7 +20,7 @@ function expectedPosition(state) {
 }
 
 export default function Player() {
-  const { state, emit, deviceId, deviceName } = useSocket();
+  const { state, emit, deviceName } = useSocket();
   const audioRef = useRef(null);
   const latestStateRef = useRef(null);
   const loadIdRef = useRef(0);
@@ -31,7 +31,6 @@ export default function Player() {
   const [buffering, setBuffering] = useState(false);
 
   const song = state?.currentSong;
-  const isHost = !state?.hostDeviceId || state.hostDeviceId === deviceId;
 
   useEffect(() => {
     latestStateRef.current = state;
@@ -162,10 +161,6 @@ export default function Player() {
   const progress = duration ? (localPos / duration) * 100 : 0;
 
   const emitControl = (event, data) => {
-    if (!isHost && event !== "volume_change" && event !== "toggle_sync") {
-      debug(deviceName, `${event.toUpperCase()}_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
-      return;
-    }
     emit(event, data);
   };
 
@@ -213,11 +208,11 @@ export default function Player() {
 
       <div className="player-center">
         <div className="player-ctrls">
-          <button className="ctrl" onClick={() => emitControl("prev_song")} disabled={!song || !isHost} title="Previous">Prev</button>
-          <button className="ctrl play" onClick={() => emitControl("play_pause", { isPlaying: !state?.isPlaying })} disabled={!song || !isHost}>
+          <button className="ctrl" onClick={() => emitControl("prev_song")} disabled={!song} title="Previous">Prev</button>
+          <button className="ctrl play" onClick={() => emitControl("play_pause", { isPlaying: !state?.isPlaying })} disabled={!song}>
             {buffering ? "..." : state?.isPlaying ? "Pause" : "Play"}
           </button>
-          <button className="ctrl" onClick={() => emitControl("next_song")} disabled={!song || !isHost} title="Next">Next</button>
+          <button className="ctrl" onClick={() => emitControl("next_song")} disabled={!song} title="Next">Next</button>
         </div>
         <div className="player-progress">
           <span className="ptime">{fmt(localPos)}</span>
@@ -229,7 +224,7 @@ export default function Player() {
               max={duration || 100}
               step={0.1}
               value={localPos}
-              disabled={!song || !isHost}
+              disabled={!song}
               className="pinput"
               onMouseDown={() => setDragging(true)}
               onTouchStart={() => setDragging(true)}

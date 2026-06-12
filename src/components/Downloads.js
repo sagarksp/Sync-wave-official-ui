@@ -9,12 +9,11 @@ function fmt(sec) {
 }
 
 export default function Downloads() {
-  const { emit, state, deviceId, deviceName } = useSocket();
+  const { emit } = useSocket();
   const { downloads, progress, deleteDownload } = useDownloads();
   const audioRef = useRef(null);
   const [offlineSong, setOfflineSong] = useState(null);
   const activeProgress = useMemo(() => Object.entries(progress), [progress]);
-  const isHost = !state?.hostDeviceId || state.hostDeviceId === deviceId;
 
   const playOffline = (song) => {
     setOfflineSong(song);
@@ -22,10 +21,6 @@ export default function Downloads() {
   };
 
   const syncSong = (song) => {
-    if (!isHost) {
-      console.log(`[${deviceName || "SyncWave Device"}] PLAY_SONG_BLOCKED_NON_HOST`, { hostDeviceName: state?.hostDeviceName });
-      return;
-    }
     emit("play_song", { song });
   };
 
