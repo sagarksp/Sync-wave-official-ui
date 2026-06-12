@@ -1,5 +1,6 @@
 import React from "react";
 import { useSocket } from "../context/SocketContext";
+import { useCall } from "../context/CallContext";
 
 function timeAgo(ts) {
   const then = typeof ts === "number" ? ts : new Date(ts).getTime();
@@ -10,7 +11,8 @@ function timeAgo(ts) {
 }
 
 export default function Devices() {
-  const { state, connected } = useSocket();
+  const { state, connected, deviceId } = useSocket();
+  const call = useCall();
   const devices = state?.devices || [];
 
   return (
@@ -31,6 +33,11 @@ export default function Devices() {
                 <span className="d-name">{d.deviceName}</span>
                 <span className="d-time">Joined {timeAgo(d.joinedAt)}</span>
               </div>
+              {d.deviceId !== deviceId && (
+                <button className="device-call-btn" onClick={() => call?.startCall(d)} title={`Call ${d.deviceName}`}>
+                  Call
+                </button>
+              )}
             </div>
           ))}
         </div>

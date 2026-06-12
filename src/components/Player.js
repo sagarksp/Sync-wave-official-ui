@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "../context/SocketContext";
+import DownloadButton from "./DownloadButton";
 
 function fmt(sec) {
   if (!sec || isNaN(sec)) return "0:00";
@@ -241,6 +242,7 @@ export default function Player() {
       </div>
 
       <div className="player-right">
+        {song && <DownloadButton song={song} className="sync-btn download-btn" />}
         <button className={`sync-btn ${state?.syncEnabled ? "on" : "off"}`} onClick={() => emitControl("toggle_sync", { syncEnabled: !state?.syncEnabled })}>
           {state?.syncEnabled ? "Live Sync" : "Sync Off"}
         </button>

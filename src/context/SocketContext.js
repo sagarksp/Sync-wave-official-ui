@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { io } from "socket.io-client";
 import { SOCKET_URL } from "../api";
 
@@ -64,8 +64,30 @@ export function SocketProvider({ children, auth, onSocketError }) {
     socketRef.current?.emit(event, data);
   }, [auth.deviceName]);
 
+  const on = useCallback((event, handler) => {
+    socketRef.current?.on(event, handler);
+  }, []);
+
+  const off = useCallback((event, handler) => {
+    socketRef.current?.off(event, handler);
+  }, []);
+
+  const value = useMemo(() => ({
+    connected,
+    state,
+    setState,
+    emit,
+    on,
+    off,
+    messages,
+    typingDevices,
+    socketId: socketRef.current?.id,
+    deviceId: auth.deviceId,
+    deviceName: auth.deviceName,
+  }), [auth.deviceId, auth.deviceName, connected, emit, messages, off, on, state, typingDevices]);
+
   return (
-    <SocketContext.Provider value={{ connected, state, setState, emit, messages, typingDevices, socketId: socketRef.current?.id, deviceId: auth.deviceId, deviceName: auth.deviceName }}>
+    <SocketContext.Provider value={value}>
       {children}
     </SocketContext.Provider>
   );

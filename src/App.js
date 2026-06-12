@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SocketProvider, useSocket } from "./context/SocketContext";
+import { CallProvider } from "./context/CallContext";
+import { DownloadProvider } from "./context/DownloadContext";
 import { apiFetch, clearStoredAuth, getDeviceId, getStoredAuth, storeAuth } from "./api";
 import Login from "./components/Login";
 import Player from "./components/Player";
@@ -8,6 +10,8 @@ import Search from "./components/Search";
 import Devices from "./components/Devices";
 import NowPlaying from "./components/NowPlaying";
 import Chat from "./components/Chat";
+import Downloads from "./components/Downloads";
+import CallModal from "./components/CallModal";
 import "./App.css";
 
 function SyncToast({ msg }) {
@@ -62,10 +66,11 @@ function Shell({ auth, onLogout }) {
           <span className="logo-name">SyncWave</span>
         </div>
         <div className="header-tabs">
-          {["search", "queue", "chat", "now"].map((item) => (
+          {["search", "queue", "downloads", "chat", "now"].map((item) => (
             <button key={item} className={`htab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
               {item === "search" && "Search"}
               {item === "queue" && <>Queue {state?.queue?.length > 0 && <span className="htab-badge">{state.queue.length}</span>}</>}
+              {item === "downloads" && "Downloads"}
               {item === "chat" && "Chat"}
               {item === "now" && "Now"}
             </button>
@@ -83,6 +88,7 @@ function Shell({ auth, onLogout }) {
         <section className="app-content">
           {tab === "search" && <Search />}
           {tab === "queue" && <Queue />}
+          {tab === "downloads" && <Downloads />}
           {tab === "chat" && <Chat deviceName={auth.deviceName} />}
           {tab === "now" && <NowPlaying />}
         </section>
@@ -98,6 +104,7 @@ function Shell({ auth, onLogout }) {
       </footer>
 
       <SyncToast msg={toast} />
+      <CallModal />
     </div>
   );
 }
@@ -147,8 +154,12 @@ export default function Root() {
 
   return (
     <SocketProvider auth={auth} onSocketError={setSocketError}>
-      {socketError && <div className="socket-error">{socketError}</div>}
-      <Shell auth={auth} onLogout={logout} />
+      <CallProvider>
+        <DownloadProvider>
+          {socketError && <div className="socket-error">{socketError}</div>}
+          <Shell auth={auth} onLogout={logout} />
+        </DownloadProvider>
+      </CallProvider>
     </SocketProvider>
   );
 }

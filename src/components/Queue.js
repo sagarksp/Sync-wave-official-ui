@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useSocket } from "../context/SocketContext";
+import DownloadButton from "./DownloadButton";
 
 function fmt(sec) {
   if (!sec) return "";
@@ -84,6 +85,7 @@ export default function Queue() {
                 <div className="qi-right">
                   <span className="qi-dur">{fmt(song.duration)}</span>
                   <div className="qi-actions">
+                    <DownloadButton song={song} className="qi-btn download-btn" />
                     <button className="qi-btn" onClick={(e) => move(e, idx, idx - 1)}>Up</button>
                     <button className="qi-btn" onClick={(e) => move(e, idx, idx + 1)}>Down</button>
                     <button className="qi-btn del" onClick={(e) => remove(e, song.id)}>Remove</button>

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useSocket } from "../context/SocketContext";
 import { API_URL } from "../api";
+import DownloadButton from "./DownloadButton";
 
 function formatDur(sec) {
   if (!sec) return "";
@@ -106,6 +107,7 @@ export default function Search() {
               <span className="result-dur">{formatDur(song.duration)}</span>
               <div className="result-actions">
                 <button className="result-btn play-btn" onClick={() => playSong(song)} title="Play now">Play</button>
+                <DownloadButton song={song} className="result-btn download-btn" />
                 <button className={`result-btn queue-btn ${inQueue ? "queued" : ""}`} onClick={() => addToQueue(song)} title={inQueue ? "In queue" : "Add to queue"}>
                   {inQueue ? "Added" : "+"}
                 </button>

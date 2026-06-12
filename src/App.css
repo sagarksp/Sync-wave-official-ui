@@ -160,6 +160,16 @@ img { display: block; }
 .d-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .d-name, .qi-title, .result-title, .player-title, .mini-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d-time, .qi-artist, .result-artist, .player-artist { color: var(--muted); font-size: 12px; }
+.device-call-btn {
+  margin-left: auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  background: var(--green);
+  color: #041007;
+  font-size: 12px;
+  font-weight: 800;
+}
 .sync-bar { margin: 8px; padding: 10px; border-radius: var(--radius); background: rgba(30, 215, 96, 0.1); color: var(--green); font-size: 13px; }
 .sync-bar.off { background: rgba(255, 95, 109, 0.1); color: var(--red); }
 
@@ -211,6 +221,9 @@ img { display: block; }
 }
 .play-btn { background: var(--green); color: #041007; font-weight: 800; }
 .queue-btn.queued { color: var(--green); }
+.download-btn { background: rgba(88, 101, 242, 0.16); color: #cdd2ff; }
+.download-btn.downloaded { background: rgba(30, 215, 96, 0.12); color: var(--green); }
+.download-btn:disabled { cursor: default; opacity: 0.82; }
 .drag-handle { color: var(--dim); cursor: grab; }
 .queue-item.dragging { opacity: 0.45; }
 .qi-left { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
@@ -232,6 +245,7 @@ img { display: block; }
 .np-song-title { font-weight: 900; }
 .np-song-artist, .np-song-album { color: var(--muted); font-size: 13px; }
 .np-lang-badge { align-self: center; padding: 3px 8px; border-radius: 999px; background: var(--bg2); color: var(--dim); font-size: 11px; text-transform: capitalize; }
+.np-download-btn { align-self: center; min-height: 34px; padding: 0 12px; border-radius: 999px; font-size: 12px; font-weight: 800; }
 .np-progress { width: 100%; display: flex; flex-direction: column; gap: 6px; }
 .np-prog-bar, .ptrack { height: 5px; border-radius: 999px; background: var(--bg3); overflow: hidden; position: relative; }
 .np-prog-fill, .pfill { height: 100%; background: var(--green); border-radius: inherit; }
@@ -252,6 +266,29 @@ img { display: block; }
 .chat-form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border); }
 .chat-form button { min-width: 66px; border-radius: var(--radius); background: var(--green); color: #041007; font-weight: 800; }
 .chat-form button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.downloads-panel { min-height: 100%; display: flex; flex-direction: column; }
+.downloads-list, .download-progress-list { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.download-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.02);
+}
+.download-row:hover { background: var(--bg2); border-color: var(--border); }
+.download-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.download-meta { color: var(--dim); font-size: 11px; }
+.download-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.offline-audio { display: none; width: calc(100% - 16px); margin: 8px; accent-color: var(--green); }
+.offline-audio.show { display: block; }
+.download-progress { padding: 10px; border-radius: var(--radius); background: var(--bg2); border: 1px solid var(--border); }
+.download-progress.error { border-color: rgba(255, 95, 109, 0.34); color: #ffadb5; }
+.dp-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; color: var(--muted); font-size: 12px; }
+.dp-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--bg3); }
+.dp-track div { height: 100%; background: var(--green); border-radius: inherit; transition: width 0.18s ease; }
 
 .player {
   min-height: var(--player);
@@ -296,6 +333,102 @@ img { display: block; }
   text-overflow: ellipsis;
 }
 
+.call-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.72);
+}
+.call-shell {
+  position: relative;
+  width: min(980px, 100%);
+  height: min(720px, calc(100dvh - 24px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #050608;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.58);
+}
+.call-remote, .call-video.remote, .call-placeholder { position: absolute; inset: 0; width: 100%; height: 100%; }
+.call-video { object-fit: cover; background: #050608; }
+.call-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); }
+.call-avatar {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--bg3);
+  color: var(--green);
+  font-size: 28px;
+  font-weight: 900;
+}
+.call-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  background: linear-gradient(rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+}
+.call-peer { font-weight: 900; }
+.call-status { margin-top: 3px; color: var(--muted); font-size: 12px; text-transform: capitalize; }
+.call-quality {
+  height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg2);
+  color: var(--text);
+}
+.call-local {
+  position: absolute;
+  right: 14px;
+  bottom: 94px;
+  width: min(210px, 32vw);
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg1);
+}
+.call-video.local, .call-local-empty { width: 100%; height: 100%; }
+.call-local-empty { display: grid; place-items: center; color: var(--dim); font-size: 12px; }
+.call-controls, .incoming-actions {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(100% - 24px, 680px);
+  flex-wrap: wrap;
+}
+.call-control {
+  min-width: 74px;
+  min-height: 44px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  font-size: 13px;
+  font-weight: 800;
+  backdrop-filter: blur(12px);
+}
+.call-control.off { background: rgba(255, 95, 109, 0.22); color: #ffd4d8; }
+.call-control.on, .call-control.accept { background: var(--green); color: #041007; }
+.call-control.end, .call-control.reject { background: var(--red); color: white; }
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 999px; }
 
@@ -314,6 +447,7 @@ img { display: block; }
   .sidebar-left { display: block; max-height: 138px; overflow-y: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .devices-list { flex-direction: row; overflow-x: auto; }
   .device-row { min-width: 172px; }
+  .device-call-btn { min-width: 54px; }
   .app-content { min-height: 0; }
   .player { grid-template-columns: 1fr; gap: 10px; }
   .player-info { order: 1; }
@@ -323,6 +457,11 @@ img { display: block; }
   .result-btn.play-btn { display: none; }
   .qi-actions { flex-wrap: wrap; justify-content: flex-end; }
   .chat-message { max-width: 94%; }
+  .download-row { align-items: flex-start; }
+  .download-actions { max-width: 128px; }
+  .call-shell { height: calc(100dvh - 24px); }
+  .call-local { width: 38vw; min-width: 122px; bottom: 116px; }
+  .call-control { min-width: 64px; padding: 0 10px; }
 }
 
 @media (max-width: 430px) {

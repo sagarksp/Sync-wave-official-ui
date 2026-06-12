@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSocket } from "../context/SocketContext";
+import DownloadButton from "./DownloadButton";
 
 function fmt(sec) {
   if (!sec) return "0:00";
@@ -39,6 +40,7 @@ export default function NowPlaying() {
         <div className="np-song-artist">{song.artist}</div>
         {song.album && <div className="np-song-album">{song.album}</div>}
         {song.language && <span className="np-lang-badge">{song.language}</span>}
+        <DownloadButton song={song} className="np-download-btn download-btn" />
       </div>
       <div className="np-progress">
         <div className="np-prog-bar"><div className="np-prog-fill" style={{ width: `${pct}%` }} /></div>
