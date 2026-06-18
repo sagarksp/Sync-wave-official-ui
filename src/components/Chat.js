@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "../context/SocketContext";
+import { useCall } from "../context/CallContext";
 
 const MAX_ATTACHMENTS = 4;
 const MAX_ATTACHMENT_BYTES = 700 * 1024;
@@ -38,13 +39,15 @@ function AttachmentCard({ item }) {
 }
 
 export default function Chat({ deviceName }) {
-  const { emit, messages, typingDevices } = useSocket();
+  const { emit, messages, typingDevices, state, deviceId } = useSocket();
+  const call = useCall();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [error, setError] = useState("");
   const bottomRef = useRef(null);
   const typingRef = useRef(null);
   const fileRef = useRef(null);
+  const peerDevice = (state?.devices || []).find((device) => device.deviceId !== deviceId);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -96,7 +99,15 @@ export default function Chat({ deviceName }) {
           <span className="panel-title">Chat</span>
           <div className="panel-badge">{messages.length} messages</div>
         </div>
-        <button className="ghost-action" type="button" onClick={() => fileRef.current?.click()}>Attach</button>
+        <div className="panel-actions">
+          {peerDevice && (
+            <>
+              <button className="ghost-action" type="button" onClick={() => call?.startVoiceCall?.(peerDevice)}>Voice</button>
+              <button className="ghost-action" type="button" onClick={() => call?.startVideoCall?.(peerDevice)}>Video</button>
+            </>
+          )}
+          <button className="ghost-action" type="button" onClick={() => fileRef.current?.click()}>Attach</button>
+        </div>
       </div>
 
       <div className="chat-list">

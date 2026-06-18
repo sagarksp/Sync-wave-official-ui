@@ -19,7 +19,7 @@ export default function DownloadButton({ song, className = "download-btn" }) {
       disabled={busy || done}
       title={status?.error || (done ? "Downloaded for offline playback" : "Download")}
     >
-      {busy ? `${status.value}%` : done ? "Saved" : "⬇ Download"}
+      {busy ? `${status.value}%` : done ? "Saved" : "Download"}
     </button>
   );
 }

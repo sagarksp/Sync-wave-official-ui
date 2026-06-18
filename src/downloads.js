@@ -69,6 +69,10 @@ function blobToBase64(blob) {
   });
 }
 
+function directSongUrl(song) {
+  return song?.downloadUrl || song?.audioUrl || song?.mediaUrl || song?.streamUrl || "";
+}
+
 export function formatBytes(bytes) {
   if (!bytes) return "Unknown size";
   const units = ["B", "KB", "MB", "GB"];
@@ -102,13 +106,24 @@ export async function removeDownload(id) {
 export async function downloadSong(song, onProgress) {
   if (!song?.id) throw new Error("Missing song");
   onProgress?.(3);
-  const metaRes = await fetch(`${API_URL}/api/download/${encodeURIComponent(song.id)}`, {
-    headers: authHeaders(),
-  });
-  const meta = await metaRes.json().catch(() => ({}));
-  if (!metaRes.ok) throw new Error(meta.error || "Download unavailable");
+  let meta = { song };
+  let downloadUrl = directSongUrl(song)
+    ? `/api/download/proxy?url=${encodeURIComponent(directSongUrl(song))}&songId=${encodeURIComponent(song.id)}`
+    : "";
 
-  const res = await fetch(`${API_URL}${meta.downloadUrl}`, { headers: authHeaders() });
+  if (!downloadUrl) {
+    const metaRes = await fetch(`${API_URL}/api/download/${encodeURIComponent(song.id)}`, {
+      headers: authHeaders(),
+    });
+    meta = await metaRes.json().catch(() => ({}));
+    if (!metaRes.ok) throw new Error(meta.error || "Download unavailable");
+    downloadUrl = meta.downloadUrl;
+  }
+
+  if (!downloadUrl) throw new Error("No downloadable URL is available for this song");
+
+  const absoluteUrl = downloadUrl.startsWith("http") ? downloadUrl : `${API_URL}${downloadUrl}`;
+  const res = await fetch(absoluteUrl, { headers: authHeaders() });
   if (!res.ok) throw new Error("Download failed");
 
   const total = Number(res.headers.get("content-length")) || 0;
@@ -131,7 +146,8 @@ export async function downloadSong(song, onProgress) {
 
   const blob = new Blob(chunks, { type: res.headers.get("content-type") || "audio/mpeg" });
   const fs = await loadCapacitorFilesystem();
-  const cleanTitle = String(meta.song.title || song.title || "song").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 48);
+  const resolvedSong = meta.song || song;
+  const cleanTitle = String(resolvedSong.title || song.title || "song").replace(/[^a-z0-9_-]+/gi, "-").slice(0, 48);
   const fileName = `${cleanTitle || "song"}-${song.id}.mp3`;
   let item;
 
@@ -144,9 +160,9 @@ export async function downloadSong(song, onProgress) {
       recursive: true,
     });
     const uri = await fs.Filesystem.getUri({ path, directory: fs.Directory.Data });
-    item = { ...meta.song, id: song.id, size: blob.size, downloadedAt: Date.now(), path, offlineUrl: uri.uri, storage: "capacitor" };
+    item = { ...resolvedSong, id: song.id, size: blob.size, downloadedAt: Date.now(), path, offlineUrl: uri.uri, storage: "capacitor" };
   } else {
-    item = { ...meta.song, id: song.id, size: blob.size, downloadedAt: Date.now(), blob, offlineUrl: URL.createObjectURL(blob), storage: "indexeddb" };
+    item = { ...resolvedSong, id: song.id, size: blob.size, downloadedAt: Date.now(), blob, offlineUrl: URL.createObjectURL(blob), storage: "indexeddb" };
   }
 
   await putDownload(item);

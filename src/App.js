@@ -62,6 +62,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatPopup, setChatPopup] = useState(null);
   const [unreadChat, setUnreadChat] = useState(0);
+  const [installPrompt, setInstallPrompt] = useState(null);
   const prevRef = useRef(null);
   const lastMessageRef = useRef("");
   const [playlists, setPlaylists] = useState([]);
@@ -69,6 +70,15 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
   const openTab = useCallback((next) => {
     setTab(next);
     setMenuOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const onInstallPrompt = (event) => {
+      event.preventDefault();
+      setInstallPrompt(event);
+    };
+    window.addEventListener("beforeinstallprompt", onInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onInstallPrompt);
   }, []);
 
   useEffect(() => {
@@ -279,7 +289,24 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
     if (tab === "chat") return <Chat deviceName={auth.deviceName} />;
     if (tab === "downloads") return <Downloads />;
     if (tab === "devices") return <Devices />;
-    if (tab === "settings") return <div className="settings-panel page-pad"><h2>Settings</h2><p>Device name: {auth.deviceName}</p><button className="ghost-action danger" onClick={onLogout}>Logout This Device</button></div>;
+    if (tab === "settings") return (
+      <div className="settings-panel page-pad">
+        <h2>Settings</h2>
+        <p>Device name: {auth.deviceName}</p>
+        {installPrompt && (
+          <button
+            className="primary-action"
+            onClick={async () => {
+              await installPrompt.prompt();
+              setInstallPrompt(null);
+            }}
+          >
+            Install SyncWave
+          </button>
+        )}
+        <button className="ghost-action danger" onClick={onLogout}>Logout This Device</button>
+      </div>
+    );
     if (tab === "profile") return <Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />;
     return <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />;
   };

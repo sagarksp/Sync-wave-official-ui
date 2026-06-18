@@ -56,6 +56,7 @@ export function CallProvider({ children }) {
   const pendingIceRef = useRef([]);
   const ringTimerRef = useRef(null);
   const facingModeRef = useRef("user");
+  const activeMediaRef = useRef({ audio: true, video: true, mode: "video" });
   const [iceServers, setIceServers] = useState(FALLBACK_ICE);
   const [call, setCallState] = useState({ status: "idle" });
   const [localStream, setLocalStream] = useState(null);
@@ -126,7 +127,7 @@ export function CallProvider({ children }) {
     });
   }, [updateDebug]);
 
-  const getCameraStream = useCallback(async (facingMode = facingModeRef.current, includeAudio = true) => {
+  const getCameraStream = useCallback(async (facingMode = facingModeRef.current, includeAudio = true, includeVideo = true) => {
     if (!navigator.mediaDevices?.getUserMedia) {
       const error = "Camera and microphone APIs are unavailable";
       logCall("MEDIA_FAILED", { error });
@@ -136,20 +137,20 @@ export function CallProvider({ children }) {
     const q = QUALITY[quality] || QUALITY["1080p"];
     const constraints = {
       audio: includeAudio ? { echoCancellation: true, noiseSuppression: true, autoGainControl: true } : false,
-      video: {
+      video: includeVideo ? {
         width: { ideal: q.width },
         height: { ideal: q.height },
         frameRate: { ideal: 30, max: 60 },
         facingMode: { ideal: facingMode },
-      },
+      } : false,
     };
 
     try {
-      logCall("CAMERA_STREAM_REQUESTED", { quality, facingMode, includeAudio });
+      logCall("MEDIA_STREAM_REQUESTED", { quality, facingMode, includeAudio, includeVideo });
       return await navigator.mediaDevices.getUserMedia(constraints);
     } catch (err) {
       logCall("CAMERA_RETRY_BASIC", { error: err.message, facingMode, includeAudio });
-      return navigator.mediaDevices.getUserMedia({ video: true, audio: includeAudio });
+      return navigator.mediaDevices.getUserMedia({ video: includeVideo, audio: includeAudio });
     }
   }, [logCall, quality]);
 
@@ -160,11 +161,14 @@ export function CallProvider({ children }) {
     logCall("MEDIA_GRANTED", streamSummary(stream));
   }, [logCall, updateDebug]);
 
-  const getMedia = useCallback(async () => {
+  const getMedia = useCallback(async (media = activeMediaRef.current) => {
     try {
-      logCall("CALL_STARTED", { quality, facingMode: facingModeRef.current });
-      const stream = await getCameraStream(facingModeRef.current, true);
+      const wantsVideo = media?.video !== false;
+      activeMediaRef.current = { audio: media?.audio !== false, video: wantsVideo, mode: wantsVideo ? "video" : "voice" };
+      logCall("CALL_STARTED", { quality, facingMode: facingModeRef.current, media: activeMediaRef.current });
+      const stream = await getCameraStream(facingModeRef.current, true, wantsVideo);
       setCameraStream(stream);
+      setCameraOff(!wantsVideo);
       return stream;
     } catch (err) {
       logCall("MEDIA_FAILED", { error: err.message });
@@ -235,7 +239,7 @@ export function CallProvider({ children }) {
       logCall("ICE_STATE", { state: pc.iceConnectionState });
     };
 
-    const stream = localStreamRef.current || await getMedia();
+    const stream = localStreamRef.current || await getMedia(activeMediaRef.current);
     stream.getTracks().forEach((track) => {
       pc.addTrack(track, stream);
       logCall("TRACK_ADDED", { kind: track.kind, enabled: track.enabled });
@@ -261,7 +265,7 @@ export function CallProvider({ children }) {
     applySenderQuality();
   }, [applySenderQuality]);
 
-  const startCall = useCallback(async (target) => {
+  const startCall = useCallback(async (target, mode = "video") => {
     if (!target?.deviceId) return;
     if (target.deviceId === deviceId) {
       const error = "Cannot call this device";
@@ -271,9 +275,11 @@ export function CallProvider({ children }) {
     }
     cleanup();
     const callId = makeCallId(deviceId);
-    setCall({ status: "calling", callId, peer: target, direction: "outgoing", startedAt: Date.now() });
+    const media = { audio: true, video: mode !== "voice", mode };
+    activeMediaRef.current = media;
+    setCall({ status: "calling", callId, peer: target, direction: "outgoing", startedAt: Date.now(), media, mode });
     try {
-      await getMedia();
+      await getMedia(media);
       console.log("[CALLER] CALL_SENT", {
         socketId,
         deviceId,
@@ -282,7 +288,7 @@ export function CallProvider({ children }) {
         receiverDeviceId: target.deviceId,
         receiverDeviceName: target.deviceName,
       });
-      emit("call_user", { targetDeviceId: target.deviceId, callId, media: { audio: true, video: true } });
+      emit("call_user", { targetDeviceId: target.deviceId, callId, media });
     } catch (err) {
       updateDebug({ error: err.message });
       setCall({ status: "failed", peer: target, callId, lastReason: err.message });
@@ -294,8 +300,9 @@ export function CallProvider({ children }) {
     if (!activeCall.peer?.deviceId || !activeCall.callId) return;
     if (ringTimerRef.current) window.clearTimeout(ringTimerRef.current);
     try {
+      activeMediaRef.current = activeCall.media || { audio: true, video: true, mode: "video" };
       await ensurePeer(activeCall.peer.deviceId, activeCall.callId);
-      setCall((prev) => ({ ...prev, status: "connecting", direction: "incoming", startedAt: Date.now() }));
+      setCall((prev) => ({ ...prev, status: "connecting", direction: "incoming", startedAt: Date.now(), mode: activeMediaRef.current.mode || (activeMediaRef.current.video ? "video" : "voice") }));
       console.log("[RECEIVER] CALL_ACCEPTED", {
         socketId,
         deviceId,
@@ -353,7 +360,9 @@ export function CallProvider({ children }) {
         return;
       }
       cleanup();
-      setCall({ status: "incoming", callId, peer: from, media, direction: "incoming", startedAt: Date.now() });
+      const nextMedia = media || { audio: true, video: true, mode: "video" };
+      activeMediaRef.current = nextMedia;
+      setCall({ status: "incoming", callId, peer: from, media: nextMedia, mode: nextMedia.mode || (nextMedia.video === false ? "voice" : "video"), direction: "incoming", startedAt: Date.now() });
       ringTimerRef.current = window.setTimeout(() => {
         emit("reject_call", { targetDeviceId: from.deviceId, callId, reason: "missed" });
         setCall({ status: "missed", peer: from, callId, lastReason: "missed" });
@@ -370,7 +379,7 @@ export function CallProvider({ children }) {
         setCall((prev) => ({ ...prev, status: "connecting", peer: from, callId }));
         const pc = await ensurePeer(from.deviceId, callId);
         await applySenderQuality();
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: activeMediaRef.current.video !== false });
         await pc.setLocalDescription(offer);
         emit("offer", { targetDeviceId: from.deviceId, callId, offer });
         logCall("OFFER_SENT", { type: offer.type });
@@ -481,11 +490,13 @@ export function CallProvider({ children }) {
   }, [muted]);
 
   const toggleCamera = useCallback(() => {
+    if (activeMediaRef.current.video === false) return;
     localStreamRef.current?.getVideoTracks().forEach((track) => { track.enabled = cameraOff; });
     setCameraOff((v) => !v);
   }, [cameraOff]);
 
   const switchCamera = useCallback(async () => {
+    if (activeMediaRef.current.video === false) return;
     const nextFacing = facingModeRef.current === "user" ? "environment" : "user";
     try {
       logCall("CAMERA_SWITCH_START", { from: facingModeRef.current, to: nextFacing, screenSharing });
@@ -561,6 +572,10 @@ export function CallProvider({ children }) {
   const toggleScreenShare = useCallback(async () => {
     const pc = pcRef.current;
     if (!pc || callRef.current.status === "idle") return;
+    if (activeMediaRef.current.video === false) {
+      updateDebug({ error: "Screen sharing is available during video calls" });
+      return;
+    }
 
     if (screenSharing) {
       logCall("SCREEN_SHARE_STOPPED", { reason: "button" });
@@ -651,6 +666,8 @@ export function CallProvider({ children }) {
       remoteStream: Boolean(remoteStream?.getTracks?.().length),
     },
     startCall,
+    startVoiceCall: (target) => startCall(target, "voice"),
+    startVideoCall: (target) => startCall(target, "video"),
     acceptCall,
     rejectCall,
     endCall,

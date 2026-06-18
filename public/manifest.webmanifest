@@ -1,0 +1,19 @@
+{
+  "name": "SyncWave",
+  "short_name": "SyncWave",
+  "description": "Music streaming, live sync, chat, downloads, and calls.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "theme_color": "#0F172A",
+  "background_color": "#0F172A",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

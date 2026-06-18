@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import { apiFetch } from "../api";
 import Devices from "./Devices";
+import { useSocket } from "../context/SocketContext";
+import { useCall } from "../context/CallContext";
 
 export default function Profile({ auth, onAuthUpdate, onLogoutAll }) {
+  const { state, deviceId } = useSocket();
+  const call = useCall();
   const [displayName, setDisplayName] = useState(auth.user?.displayName || auth.user?.username || "");
   const [avatarUrl, setAvatarUrl] = useState(auth.user?.avatarUrl || "");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -10,6 +14,7 @@ export default function Profile({ auth, onAuthUpdate, onLogoutAll }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const peerDevice = (state?.devices || []).find((device) => device.deviceId !== deviceId);
 
   const saveProfile = async (e) => {
     e.preventDefault();
@@ -59,6 +64,12 @@ export default function Profile({ auth, onAuthUpdate, onLogoutAll }) {
           <span className="eyebrow">Profile</span>
           <h2>{displayName || auth.user?.username}</h2>
           <p>{auth.user?.username}</p>
+          {peerDevice && (
+            <div className="profile-call-actions">
+              <button className="ghost-action" onClick={() => call?.startVoiceCall?.(peerDevice)}>Voice Call</button>
+              <button className="ghost-action" onClick={() => call?.startVideoCall?.(peerDevice)}>Video Call</button>
+            </div>
+          )}
         </div>
       </section>
 

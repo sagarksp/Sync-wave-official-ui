@@ -45,9 +45,14 @@ export default function Devices() {
               </div>
               <span className="d-live" title="Online" />
               {d.deviceId !== deviceId && (
-                <button className="device-call-btn" onClick={() => call?.startCall(d)} title={`Call ${d.deviceName}`}>
-                  Call
-                </button>
+                <div className="device-call-actions">
+                  <button className="device-call-btn" onClick={() => call?.startVoiceCall?.(d) || call?.startCall(d, "voice")} title={`Voice call ${d.deviceName}`}>
+                    Voice
+                  </button>
+                  <button className="device-call-btn video" onClick={() => call?.startVideoCall?.(d) || call?.startCall(d, "video")} title={`Video call ${d.deviceName}`}>
+                    Video
+                  </button>
+                </div>
               )}
             </div>
           ))}
