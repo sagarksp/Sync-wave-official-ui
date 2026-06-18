@@ -58,11 +58,16 @@ export default function NowPlaying() {
         <div className="lyrics-card">
           <div className="section-head compact-head">
             <div>
-              <h2>Lyrics</h2>
-              <p>Future-ready lyrics panel</p>
+              <h2>Track Details</h2>
+              <p>{song.album || "SyncWave session"}</p>
             </div>
           </div>
-          <div className="lyrics-placeholder">Lyrics will appear here when available.</div>
+          <div className="lyrics-placeholder">
+            <strong>{song.title}</strong>
+            <span>{song.artist}</span>
+            {song.language && <span>{song.language}</span>}
+            {song.year && <span>{song.year}</span>}
+          </div>
         </div>
         <div className="up-next-card">
           <div className="section-head compact-head">

@@ -320,7 +320,6 @@ img { display: block; }
   padding: 12px 12px 0;
   overflow: hidden;
 }
-.desktop-sidebar ~ .app-main { }
 .sidebar-left, .sidebar-right, .app-content {
   min-height: 0;
   overflow-y: auto;
@@ -730,7 +729,8 @@ img { display: block; }
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.055);
 }
-.lyrics-placeholder { color: var(--muted); line-height: 1.6; }
+.lyrics-placeholder { color: var(--muted); line-height: 1.6; display: flex; flex-direction: column; gap: 4px; }
+.lyrics-placeholder strong { color: var(--text); }
 .toggle-pill.on { background: rgba(30, 215, 96, 0.15); color: var(--green); }
 .np-visualizer { height: 56px; display: flex; align-items: flex-end; gap: 3px; margin: 12px 0; }
 .viz-bar { width: 4px; border-radius: 3px; background: var(--cyan); opacity: 0.42; }

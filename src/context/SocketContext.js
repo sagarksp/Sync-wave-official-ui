@@ -48,12 +48,17 @@ export function SocketProvider({ children, auth, onSocketError }) {
     socket.on("chat_message", (item) => setMessages((prev) => [...prev, item].slice(-120)));
     socket.on("messages_seen", ({ messageIds, seen }) => {
       const ids = new Set(messageIds || []);
-      setMessages((prev) => prev.map((message) => {
-        if (!ids.has(message._id)) return message;
-        const seenBy = message.seenBy || [];
-        if (seenBy.some((item) => item.deviceId === seen.deviceId)) return message;
-        return { ...message, seenBy: [...seenBy, seen] };
-      }));
+      setMessages((prev) => {
+        let changed = false;
+        const next = prev.map((message) => {
+          if (!ids.has(message._id)) return message;
+          const seenBy = message.seenBy || [];
+          if (seenBy.some((item) => item.deviceId === seen.deviceId)) return message;
+          changed = true;
+          return { ...message, seenBy: [...seenBy, seen] };
+        });
+        return changed ? next : prev;
+      });
     });
     socket.on("typing", ({ devices }) => setTypingDevices(devices || []));
     socket.on("force_logout", () => {
