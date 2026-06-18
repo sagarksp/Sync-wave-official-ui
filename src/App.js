@@ -298,11 +298,18 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
           {unreadChat > 0 && <b>{unreadChat}</b>}
         </button>
         {menuOpen && (
-          <div className="hamburger-menu">
-            {NAV_ITEMS.map((item) => (
-              <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
-            ))}
-          </div>
+          <>
+            <button className="menu-backdrop" aria-label="Close menu" onClick={() => setMenuOpen(false)} />
+            <div className="hamburger-menu">
+              <div className="menu-drawer-head">
+                <span className="logo-mark">SW</span>
+                <span className="logo-name">SyncWave</span>
+              </div>
+              {NAV_ITEMS.map((item) => (
+                <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
+              ))}
+            </div>
+          </>
         )}
       </header>
 
