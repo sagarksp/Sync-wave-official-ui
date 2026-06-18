@@ -14,6 +14,7 @@ import Playlists from "./components/Playlists";
 import CallModal from "./components/CallModal";
 import Library from "./components/Library";
 import Profile from "./components/Profile";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 const NAV_ITEMS = [
@@ -270,6 +271,19 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
     onPlayPlaylist: playPlaylist,
   }), [addSongToPlaylist, createPlaylist, deletePlaylist, playPlaylist, playlists, removeSongFromPlaylist, renamePlaylist, reorderPlaylistSong]);
 
+  const renderScreen = () => {
+    if (tab === "home") return <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />;
+    if (tab === "search") return <Search />;
+    if (tab === "library") return <Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />;
+    if (tab === "playlists") return <Playlists {...playlistProps} />;
+    if (tab === "chat") return <Chat deviceName={auth.deviceName} />;
+    if (tab === "downloads") return <Downloads />;
+    if (tab === "devices") return <Devices />;
+    if (tab === "settings") return <div className="settings-panel page-pad"><h2>Settings</h2><p>Device name: {auth.deviceName}</p><button className="ghost-action danger" onClick={onLogout}>Logout This Device</button></div>;
+    if (tab === "profile") return <Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />;
+    return <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />;
+  };
+
   return (
     <div className="app">
       <aside className="desktop-sidebar">
@@ -315,15 +329,9 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
 
       <main className="app-main">
         <section className="app-content">
-          {tab === "home" && <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />}
-          {tab === "search" && <Search />}
-          {tab === "library" && <Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />}
-          {tab === "playlists" && <Playlists {...playlistProps} />}
-          {tab === "chat" && <Chat deviceName={auth.deviceName} />}
-          {tab === "downloads" && <Downloads />}
-          {tab === "devices" && <Devices />}
-          {tab === "settings" && <div className="settings-panel page-pad"><h2>Settings</h2><p>Device name: {auth.deviceName}</p><button className="ghost-action danger" onClick={onLogout}>Logout This Device</button></div>}
-          {tab === "profile" && <Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />}
+          <ErrorBoundary key={tab} name={NAV_ITEMS.find(([key]) => key === tab)?.[1] || tab}>
+            {renderScreen()}
+          </ErrorBoundary>
         </section>
       </main>
 
@@ -342,6 +350,29 @@ export default function Root() {
   const [auth, setAuth] = useState(null);
   const [checking, setChecking] = useState(true);
   const [socketError, setSocketError] = useState("");
+
+  useEffect(() => {
+    const logRuntimeError = (event) => {
+      const details = {
+        message: event.message || event.reason?.message || "Runtime error",
+        stack: event.error?.stack || event.reason?.stack || "",
+        time: new Date().toISOString(),
+        userAgent: navigator.userAgent,
+      };
+      console.error("[SyncWave Runtime Error]", details);
+      try {
+        localStorage.setItem("syncwave_last_runtime_error", JSON.stringify(details));
+      } catch (err) {
+        // Ignore logging storage failures.
+      }
+    };
+    window.addEventListener("error", logRuntimeError);
+    window.addEventListener("unhandledrejection", logRuntimeError);
+    return () => {
+      window.removeEventListener("error", logRuntimeError);
+      window.removeEventListener("unhandledrejection", logRuntimeError);
+    };
+  }, []);
 
   useEffect(() => {
     const saved = getStoredAuth();
