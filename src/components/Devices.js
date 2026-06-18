@@ -10,18 +10,18 @@ function timeAgo(ts) {
   return `${Math.floor(s / 3600)}h ago`;
 }
 
+function platformLabel(name = "") {
+  const lower = name.toLowerCase();
+  if (lower.includes("mobile") || lower.includes("phone") || lower.includes("android")) return "Mobile";
+  if (lower.includes("tablet") || lower.includes("ipad")) return "Tablet";
+  if (lower.includes("laptop") || lower.includes("desktop") || lower.includes("pc")) return "Desktop";
+  return "Device";
+}
+
 export default function Devices() {
   const { state, connected, deviceId } = useSocket();
   const call = useCall();
   const devices = state?.devices || [];
-  const currentSong = state?.currentSong;
-
-  const platformLabel = (name = "") => {
-    const lower = name.toLowerCase();
-    if (lower.includes("mobile") || lower.includes("phone") || lower.includes("android")) return "Mobile";
-    if (lower.includes("laptop") || lower.includes("desktop") || lower.includes("pc")) return "Desktop";
-    return "Device";
-  };
 
   return (
     <div className="devices-panel">
@@ -39,7 +39,9 @@ export default function Devices() {
               <span className="device-icon">{platformLabel(d.deviceName).slice(0, 1)}</span>
               <div className="d-info">
                 <span className="d-name">{d.deviceName}</span>
-                <span className="d-time">{platformLabel(d.deviceName)} · {currentSong && state?.isPlaying ? "Listening Now" : "Idle"} · {timeAgo(d.joinedAt)}</span>
+                <span className="d-time">Online</span>
+                <span className="d-time">{d.currentActivity || "Idle"}</span>
+                <span className="d-time">{platformLabel(d.deviceName)} | Last seen {timeAgo(d.lastSeen || d.joinedAt)}</span>
               </div>
               <span className="d-live" title="Online" />
               {d.deviceId !== deviceId && (

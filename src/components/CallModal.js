@@ -7,15 +7,16 @@ function formatTimer(start) {
   return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
 }
 
-function StreamVideo({ stream, muted, className }) {
+function StreamVideo({ stream, muted, className, videoRef }) {
   const ref = useRef(null);
   useEffect(() => {
     const video = ref.current;
+    if (videoRef) videoRef.current = video;
     if (!video || !stream) return;
     video.srcObject = stream;
     const playPromise = video.play();
     if (playPromise?.catch) playPromise.catch((err) => console.log("[SyncWave Call] VIDEO_PLAY_BLOCKED", err.message));
-  }, [stream]);
+  }, [stream, videoRef]);
   return <video ref={ref} className={className} autoPlay playsInline muted={muted} />;
 }
 
@@ -23,7 +24,9 @@ export default function CallModal() {
   const call = useCall();
   const [tick, setTick] = useState(0);
   const [previewPos, setPreviewPos] = useState(null);
+  const [minimized, setMinimized] = useState(false);
   const dragRef = useRef(null);
+  const remoteVideoRef = useRef(null);
 
   useEffect(() => {
     const t = window.setInterval(() => setTick((v) => v + 1), 1000);
@@ -40,8 +43,51 @@ export default function CallModal() {
     if (callState.status === "calling") return "Calling...";
     if (callState.status === "incoming") return "Ringing...";
     if (callState.status === "connected") return "Connected";
+    if (callState.status === "reconnecting") return "Reconnecting...";
     return "Connecting...";
   }, [callState.status]);
+
+  const requestPiP = useCallback(async () => {
+    const video = remoteVideoRef.current;
+    if (!video || !document.pictureInPictureEnabled || document.pictureInPictureElement) return;
+    if (!video.videoWidth) return;
+    try {
+      await video.requestPictureInPicture();
+    } catch (err) {
+      console.log("[SyncWave Call] PIP_UNAVAILABLE", err.message);
+    }
+  }, []);
+
+  const minimizeCall = useCallback(() => {
+    setMinimized(true);
+    requestPiP();
+  }, [requestPiP]);
+
+  const expandCall = useCallback(async () => {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture().catch(() => {});
+    }
+    setMinimized(false);
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      setMinimized(false);
+      return undefined;
+    }
+    window.history.pushState({ syncwaveCall: true }, "");
+    const onPop = () => minimizeCall();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [minimizeCall, visible]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (visible && document.visibilityState === "hidden") requestPiP();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [requestPiP, visible]);
 
   const startDrag = useCallback((event) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -72,12 +118,31 @@ export default function CallModal() {
   const previewStyle = previewPos ? { left: previewPos.x, top: previewPos.y, right: "auto" } : undefined;
   if (!visible) return null;
 
+  if (minimized && !incoming && !missed) {
+    return (
+      <div className="call-mini-window" onClick={expandCall} role="button" tabIndex={0}>
+        <div className="call-mini-video">
+          {call.remoteStream?.getTracks?.().length ? (
+            <StreamVideo stream={call.remoteStream} muted={call.speakerOff} className="call-video mini" videoRef={remoteVideoRef} />
+          ) : (
+            <div className="call-avatar mini">{peerName.slice(0, 2).toUpperCase()}</div>
+          )}
+        </div>
+        <div className="call-mini-meta">
+          <strong>{peerName}</strong>
+          <span>{callState.status === "connected" ? timer : callStatus}</span>
+        </div>
+        <button className="mini-end" onClick={(e) => { e.stopPropagation(); call.endCall("ended"); }}>End</button>
+      </div>
+    );
+  }
+
   return (
     <div className="call-layer">
       <div className="call-shell">
         <div className="call-remote">
           {call.remoteStream?.getTracks?.().length ? (
-            <StreamVideo stream={call.remoteStream} muted={call.speakerOff} className="call-video remote" />
+            <StreamVideo stream={call.remoteStream} muted={call.speakerOff} className="call-video remote" videoRef={remoteVideoRef} />
           ) : (
             <div className="call-placeholder">
               <div className="call-avatar">{peerName.slice(0, 2).toUpperCase()}</div>
@@ -91,6 +156,7 @@ export default function CallModal() {
             <div className="call-peer">{peerName}</div>
             <div className="call-status">{callStatus}{callState.status === "connected" ? ` ${timer}` : ""}</div>
           </div>
+          {!incoming && !missed && <button className="call-minimize" onClick={minimizeCall}>Minimize</button>}
         </div>
 
         <div
@@ -116,24 +182,27 @@ export default function CallModal() {
         ) : (
           <div className="call-controls">
             <button className={`call-control ${call.muted ? "off" : ""}`} onClick={call.toggleMute} title="Microphone">
-              <span>🎤</span><small>{call.muted ? "Muted" : "Mic"}</small>
+              <span>Mic</span><small>{call.muted ? "Muted" : "On"}</small>
             </button>
             <button className={`call-control ${call.cameraOff ? "off" : ""}`} onClick={call.toggleCamera} title="Camera">
-              <span>📹</span><small>{call.cameraOff ? "Off" : "Cam"}</small>
+              <span>Cam</span><small>{call.cameraOff ? "Off" : "On"}</small>
             </button>
             <button className="call-control" onClick={call.switchCamera} title="Switch camera">
-              <span>🔄</span><small>Switch</small>
+              <span>{call.cameraFacing === "user" ? "Front" : "Back"}</span><small>Switch</small>
             </button>
             <button className={`call-control ${call.speakerOff ? "off" : ""}`} onClick={call.toggleSpeaker} title="Speaker">
-              <span>🔊</span><small>{call.speakerOff ? "Off" : "Sound"}</small>
+              <span>Audio</span><small>{call.speakerOff ? "Off" : "On"}</small>
             </button>
             {call.screenShareSupported && (
               <button className={`call-control ${call.screenSharing ? "on" : ""}`} onClick={call.toggleScreenShare} title="Share screen">
-                <span>🖥</span><small>{call.screenSharing ? "Stop" : "Share"}</small>
+                <span>Share</span><small>{call.screenSharing ? "Stop" : "Screen"}</small>
               </button>
             )}
+            <button className="call-control" onClick={minimizeCall} title="Picture in picture">
+              <span>Mini</span><small>PiP</small>
+            </button>
             <button className="call-control end" onClick={() => call.endCall("ended")} title="End call">
-              <span>📞</span><small>End</small>
+              <span>End</span><small>Call</small>
             </button>
           </div>
         )}

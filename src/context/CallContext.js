@@ -34,13 +34,14 @@ function isCapacitorAndroid() {
 
 function screenShareCapability() {
   const hasGetDisplayMedia = Boolean(navigator.mediaDevices?.getDisplayMedia);
-  const secure = Boolean(window.isSecureContext || isLocalhost());
+  const capacitorAndroid = isCapacitorAndroid();
+  const secure = Boolean(window.isSecureContext || isLocalhost() || capacitorAndroid);
   const supported = Boolean(hasGetDisplayMedia && secure);
   return {
     supported,
     hasGetDisplayMedia,
     secureContext: secure,
-    capacitorAndroid: isCapacitorAndroid(),
+    capacitorAndroid,
     platform: window.Capacitor?.getPlatform?.() || navigator.userAgent,
   };
 }
@@ -222,6 +223,10 @@ export function CallProvider({ children }) {
         setCall((prev) => ({ ...prev, status: "connected", connectedAt: prev.connectedAt || Date.now() }));
       } else if (["disconnected", "failed"].includes(pc.connectionState)) {
         setCall((prev) => ({ ...prev, status: prev.status === "idle" ? "idle" : "reconnecting" }));
+        if (pc.connectionState === "failed") {
+          pc.restartIce?.();
+          logCall("ICE_RESTART_REQUESTED", { callId, targetDeviceId });
+        }
       }
     };
 
@@ -576,7 +581,14 @@ export function CallProvider({ children }) {
 
     try {
       logCall("SCREEN_SHARE_START");
-      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: QUALITY["1080p"].width },
+          height: { ideal: QUALITY["1080p"].height },
+          frameRate: { ideal: 30, max: 60 },
+        },
+        audio: false,
+      });
       const screenTrack = display.getVideoTracks()[0];
       const sender = pc.getSenders().find((s) => s.track?.kind === "video");
 

@@ -26,9 +26,9 @@ export default function Playlists({ playlists, onCreate, onRename, onDelete, onA
     });
   }, [current, queue]);
 
-  const create = (e) => {
+  const create = async (e) => {
     e.preventDefault();
-    const created = onCreate(name.trim() || "New Playlist");
+    const created = await onCreate(name.trim() || "New Playlist");
     setName("");
     if (created?.id) setSelectedId(created.id);
   };

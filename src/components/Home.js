@@ -40,24 +40,10 @@ export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
   const current = state?.currentSong;
   const songs = uniqueSongs([current, ...queue].filter(Boolean));
   const recommended = uniqueSongs([...queue].reverse()).slice(0, 10);
-  const trending = songs.slice(0, 8);
 
   return (
     <div className="home-page">
-      <section className="home-hero">
-        <div className="hero-copy">
-          <span className="eyebrow">Live multi-device listening</span>
-          <h1>{current ? current.title : "SyncWave"}</h1>
-          <p>{current ? `${current.artist} is ready across every device.` : "Search, queue, chat, and call while every screen stays in sync."}</p>
-          <div className="hero-actions">
-            <button className="primary-action" onClick={() => current ? onPlaySong(current) : onTab("search")}>{current ? "Resume" : "Find Music"}</button>
-            <button className="ghost-action" onClick={() => onTab("queue")}>Open Queue</button>
-          </div>
-        </div>
-        <div className="hero-art">
-          {current ? <img src={current.cover} alt={current.title} onError={(e) => { e.target.src = "https://via.placeholder.com/320/151923/fff?text=SW"; }} /> : <div className="hero-disc">SW</div>}
-        </div>
-      </section>
+      <SongRail title="Recently Played" subtitle="From your active queue" songs={songs.slice(0, 10)} onPlay={onPlaySong} />
 
       <section className="home-section continue-grid">
         <div className="section-head">
@@ -79,9 +65,7 @@ export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
         </div>
       </section>
 
-      <SongRail title="Recently Played" subtitle="From your active queue" songs={songs.slice(0, 10)} onPlay={onPlaySong} />
-      <SongRail title="Recommended For You" subtitle="Based on your current queue" songs={recommended} onPlay={onPlaySong} />
-      <SongRail title="Trending" subtitle="Fast access to this session's picks" songs={trending} onPlay={onPlaySong} />
+      <SongRail title="Recommended Songs" subtitle="Based on your current queue" songs={recommended} onPlay={onPlaySong} />
 
       <section className="home-section">
         <div className="section-head">
