@@ -121,19 +121,28 @@ export default function CallModal() {
 
   if (minimized && !incoming && !missed) {
     return (
-      <div className="call-mini-window" onClick={expandCall} role="button" tabIndex={0}>
-        <div className="call-mini-video">
+      <div className="call-mini-window whatsapp" role="dialog" aria-label="Active call">
+        <button className="call-mini-video" onClick={expandCall} type="button">
           {!isVoice && call.remoteStream?.getTracks?.().length ? (
             <StreamVideo stream={call.remoteStream} muted={call.speakerOff} className="call-video mini" videoRef={remoteVideoRef} />
           ) : (
             <div className="call-avatar mini">{peerName.slice(0, 2).toUpperCase()}</div>
           )}
-        </div>
+          {!isVoice && call.localStream?.getTracks?.().length && (
+            <div className="call-mini-local">
+              <StreamVideo stream={call.localStream} muted className="call-video local" />
+            </div>
+          )}
+        </button>
         <div className="call-mini-meta">
           <strong>{peerName}</strong>
-          <span>{callState.status === "connected" ? timer : callStatus}</span>
+          <span>{callState.status === "connected" ? `${isVoice ? "Voice" : "Video"} ${timer}` : callStatus}</span>
         </div>
-        <button className="mini-end" onClick={(e) => { e.stopPropagation(); call.endCall("ended"); }}>End</button>
+        <div className="call-mini-actions">
+          <button className={`mini-round ${call.muted ? "off" : ""}`} onClick={call.toggleMute} title={call.muted ? "Unmute" : "Mute"}>{call.muted ? "Unmute" : "Mute"}</button>
+          <button className="mini-round" onClick={expandCall}>Return</button>
+          <button className="mini-end" onClick={() => call.endCall("ended")}>End</button>
+        </div>
       </div>
     );
   }

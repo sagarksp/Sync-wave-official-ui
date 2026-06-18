@@ -69,8 +69,21 @@ function blobToBase64(blob) {
   });
 }
 
+function urlFromValue(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.find((item) => item?.quality === "320kbps")?.url ||
+      value.find((item) => item?.quality === "160kbps")?.url ||
+      value.find((item) => item?.url)?.url ||
+      "";
+  }
+  if (typeof value === "object") return value.url || value.link || "";
+  return "";
+}
+
 function directSongUrl(song) {
-  return song?.downloadUrl || song?.audioUrl || song?.mediaUrl || song?.streamUrl || "";
+  return urlFromValue(song?.downloadUrl) || urlFromValue(song?.audioUrl) || urlFromValue(song?.mediaUrl) || urlFromValue(song?.streamUrl);
 }
 
 export function formatBytes(bytes) {
@@ -107,8 +120,9 @@ export async function downloadSong(song, onProgress) {
   if (!song?.id) throw new Error("Missing song");
   onProgress?.(3);
   let meta = { song };
-  let downloadUrl = directSongUrl(song)
-    ? `/api/download/proxy?url=${encodeURIComponent(directSongUrl(song))}&songId=${encodeURIComponent(song.id)}`
+  const directUrl = directSongUrl(song);
+  let downloadUrl = directUrl
+    ? `/api/download/proxy?url=${encodeURIComponent(directUrl)}&songId=${encodeURIComponent(song.id)}`
     : "";
 
   if (!downloadUrl) {

@@ -55,6 +55,21 @@ function NavButton({ item, active, unread, onClick }) {
   );
 }
 
+async function retryRequest(fn, attempts = 3, delay = 900) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, delay * (i + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 function Shell({ auth, onAuthUpdate, onLogout }) {
   const { state, connected, emit, messages } = useSocket();
   const [tab, setTab] = useState("home");
@@ -83,7 +98,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
 
   useEffect(() => {
     let alive = true;
-    apiFetch("/api/playlists")
+    retryRequest(() => apiFetch("/api/playlists"), 3, 900)
       .then((data) => {
         if (!alive) return;
         setPlaylists(data.playlists || []);
@@ -105,7 +120,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
           });
         }
       })
-      .catch((err) => setToast(err.message || "Playlists unavailable"));
+      .catch((err) => setToast(`Playlists unavailable: ${err.message || "Connection failed"}`));
     return () => { alive = false; };
   }, [auth.user?.id]);
 
@@ -440,13 +455,15 @@ export default function Root() {
   if (!auth) return <Login onLogin={setAuth} />;
 
   return (
-    <SocketProvider auth={auth} onSocketError={setSocketError}>
-      <CallProvider>
-        <DownloadProvider>
-          {socketError && <div className="socket-error">{socketError}</div>}
-          <Shell auth={auth} onAuthUpdate={setAuth} onLogout={logout} />
-        </DownloadProvider>
-      </CallProvider>
-    </SocketProvider>
+    <ErrorBoundary name="SyncWave App">
+      <SocketProvider auth={auth} onSocketError={setSocketError}>
+        <CallProvider>
+          <DownloadProvider>
+            {socketError && <div className="socket-error">{socketError}</div>}
+            <Shell auth={auth} onAuthUpdate={setAuth} onLogout={logout} />
+          </DownloadProvider>
+        </CallProvider>
+      </SocketProvider>
+    </ErrorBoundary>
   );
 }

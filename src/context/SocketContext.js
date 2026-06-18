@@ -14,6 +14,7 @@ export function SocketProvider({ children, auth, onSocketError }) {
   const [state, setState] = useState(null);
   const [messages, setMessages] = useState([]);
   const [typingDevices, setTypingDevices] = useState([]);
+  const connectAttemptsRef = useRef(0);
 
   useEffect(() => {
     if (!auth?.token) return;
@@ -25,6 +26,8 @@ export function SocketProvider({ children, auth, onSocketError }) {
 
     socket.on("connect", () => {
       setConnected(true);
+      connectAttemptsRef.current = 0;
+      onSocketError?.("");
       debug(auth.deviceName, "SOCKET_CONNECTED");
       debug(auth.deviceName, "SOCKET_EMITTED:join", { deviceId: auth.deviceId });
       socket.emit("join", { deviceId: auth.deviceId, deviceName: auth.deviceName }, (res) => {
@@ -69,7 +72,12 @@ export function SocketProvider({ children, auth, onSocketError }) {
     socket.on("device_event", (event) => {
       setState((prev) => prev ? { ...prev, lastDeviceEvent: event } : prev);
     });
-    socket.on("connect_error", (err) => onSocketError?.(err.message || "Socket connection failed"));
+    socket.on("connect_error", (err) => {
+      connectAttemptsRef.current += 1;
+      if (connectAttemptsRef.current >= 3) {
+        onSocketError?.(err.message || "Socket connection failed");
+      }
+    });
 
     return () => socket.disconnect();
   }, [auth?.token, auth?.deviceId, auth?.deviceName, onSocketError]);

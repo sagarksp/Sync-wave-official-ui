@@ -158,9 +158,9 @@ export default function Chat({ deviceName }) {
 
       <form className="chat-form" onSubmit={send}>
         <input ref={fileRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,application/pdf" multiple onChange={addFiles} hidden />
-        <button type="button" className="emoji-btn" onClick={() => fileRef.current?.click()}>Add</button>
+        <button type="button" className="composer-icon" onClick={() => fileRef.current?.click()} title="Attach file">+</button>
         <input value={text} onChange={handleChange} placeholder="Message your devices" maxLength={1000} />
-        <button disabled={!text.trim() && !attachments.length}>Send</button>
+        <button className="send-btn" disabled={!text.trim() && !attachments.length}>Send</button>
       </form>
     </div>
   );
