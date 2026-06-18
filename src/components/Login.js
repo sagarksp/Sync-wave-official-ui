@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { apiFetch, getDeviceId, storeAuth } from "../api";
 
 export default function Login({ onLogin }) {
@@ -9,6 +9,13 @@ export default function Login({ onLogin }) {
   const [remember, setRemember] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const validation = useMemo(() => {
+    if (username.trim().length > 0 && username.trim().length < 3) return "Username must be at least 3 characters.";
+    if (password.length > 0 && password.length < 6) return "Password must be at least 6 characters.";
+    if (deviceName.trim().length > 0 && deviceName.trim().length < 2) return "Device name must be at least 2 characters.";
+    return "";
+  }, [deviceName, password, username]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -35,16 +42,30 @@ export default function Login({ onLogin }) {
     }
   };
 
-  const canSubmit = username.trim().length >= 3 && password.length >= 6 && deviceName.trim().length >= 2;
+  const canSubmit = username.trim().length >= 3 && password.length >= 6 && deviceName.trim().length >= 2 && !loading;
 
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={submit}>
+      <section className="login-brand-panel">
         <div className="login-logo">
           <span className="logo-mark">SW</span>
           <span className="logo-name">SyncWave</span>
         </div>
-        <p className="login-sub">Sign in, name this device, and keep every screen in sync.</p>
+        <h1>Music, chat, calls, and devices in one live session.</h1>
+        <p>Sign in once, name this device, and keep playback, queue, downloads, chat, and calls synced across your account.</p>
+        <div className="login-feature-row">
+          <span>Live Sync</span>
+          <span>Private Playlists</span>
+          <span>HD Calls</span>
+        </div>
+      </section>
+
+      <form className="login-card" onSubmit={submit}>
+        <div>
+          <span className="eyebrow">Welcome</span>
+          <h2>{mode === "login" ? "Sign in to SyncWave" : "Create your account"}</h2>
+          <p className="login-sub">Your playlists and messages stay scoped to your account.</p>
+        </div>
 
         <div className="auth-tabs">
           <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Login</button>
@@ -53,27 +74,27 @@ export default function Login({ onLogin }) {
 
         <label className="field">
           <span>Username</span>
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" placeholder="sagar" />
         </label>
 
         <label className="field">
           <span>Password</span>
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="At least 6 characters" />
         </label>
 
         <label className="field">
-          <span>Enter Device Name</span>
+          <span>Device Name</span>
           <input value={deviceName} onChange={(e) => setDeviceName(e.target.value)} placeholder="Sagar Laptop" autoComplete="off" />
         </label>
 
         <label className="remember-row">
           <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-          <span>Remember login</span>
+          <span>Remember login on this device</span>
         </label>
 
-        {error && <div className="form-error">{error}</div>}
+        {(error || validation) && <div className="form-error">{error || validation}</div>}
 
-        <button className="login-btn" disabled={!canSubmit || loading}>
+        <button className="login-btn" disabled={!canSubmit}>
           {loading ? "Connecting..." : mode === "login" ? "Login" : "Create Account"}
         </button>
       </form>

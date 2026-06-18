@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SocketProvider, useSocket } from "./context/SocketContext";
 import { CallProvider } from "./context/CallContext";
 import { DownloadProvider } from "./context/DownloadContext";
@@ -6,15 +6,27 @@ import { apiFetch, clearStoredAuth, getDeviceId, getStoredAuth, storeAuth } from
 import Login from "./components/Login";
 import Home from "./components/Home";
 import Player from "./components/Player";
-import Queue from "./components/Queue";
 import Search from "./components/Search";
 import Devices from "./components/Devices";
-import NowPlaying from "./components/NowPlaying";
 import Chat from "./components/Chat";
 import Downloads from "./components/Downloads";
 import Playlists from "./components/Playlists";
 import CallModal from "./components/CallModal";
+import Library from "./components/Library";
+import Profile from "./components/Profile";
 import "./App.css";
+
+const NAV_ITEMS = [
+  ["home", "Home"],
+  ["search", "Search"],
+  ["library", "Library"],
+  ["playlists", "Playlists"],
+  ["chat", "Chat"],
+  ["downloads", "Downloads"],
+  ["devices", "Live Devices"],
+  ["settings", "Settings"],
+  ["profile", "Profile"],
+];
 
 function SyncToast({ msg }) {
   if (!msg) return null;
@@ -32,7 +44,17 @@ function ChatPopup({ item, onOpen, onClose }) {
   );
 }
 
-function Shell({ auth, onLogout }) {
+function NavButton({ item, active, unread, onClick }) {
+  const [key, label] = item;
+  return (
+    <button className={`nav-item ${active ? "active" : ""}`} onClick={() => onClick(key)}>
+      <span>{label}</span>
+      {key === "chat" && unread > 0 && <b>{unread}</b>}
+    </button>
+  );
+}
+
+function Shell({ auth, onAuthUpdate, onLogout }) {
   const { state, connected, emit, messages } = useSocket();
   const [tab, setTab] = useState("home");
   const [toast, setToast] = useState("");
@@ -43,13 +65,18 @@ function Shell({ auth, onLogout }) {
   const lastMessageRef = useRef("");
   const [playlists, setPlaylists] = useState([]);
 
+  const openTab = useCallback((next) => {
+    setTab(next);
+    setMenuOpen(false);
+  }, []);
+
   useEffect(() => {
     let alive = true;
     apiFetch("/api/playlists")
       .then((data) => {
         if (!alive) return;
         setPlaylists(data.playlists || []);
-        const legacyKey = `syncwave_playlists_imported_${auth.user?.id || auth.user?._id || "account"}`;
+        const legacyKey = `syncwave_playlists_imported_${auth.user?.id || "account"}`;
         let legacy = [];
         try {
           legacy = JSON.parse(localStorage.getItem("syncwave_playlists") || "[]");
@@ -69,14 +96,13 @@ function Shell({ auth, onLogout }) {
       })
       .catch((err) => setToast(err.message || "Playlists unavailable"));
     return () => { alive = false; };
-  }, [auth.user]);
+  }, [auth.user?.id]);
 
   useEffect(() => {
     if (tab === "chat") {
       setUnreadChat(0);
       setChatPopup(null);
     }
-    setMenuOpen(false);
   }, [tab]);
 
   useEffect(() => {
@@ -101,10 +127,10 @@ function Shell({ auth, onLogout }) {
       }
     }
 
-    const timeout = setTimeout(() => setChatPopup(null), 5200);
+    const popupTimeout = setTimeout(() => setChatPopup(null), 5200);
     const toastTimeout = setTimeout(() => setToast(""), 3200);
     return () => {
-      clearTimeout(timeout);
+      clearTimeout(popupTimeout);
       clearTimeout(toastTimeout);
     };
   }, [auth.deviceName, messages, tab]);
@@ -217,22 +243,52 @@ function Shell({ auth, onLogout }) {
     emit("play_song", { song: playlist.songs[0] });
   }, [emit]);
 
+  const onProfileUpdate = useCallback((user) => {
+    const nextAuth = { ...auth, user };
+    storeAuth(nextAuth, auth.remember !== false);
+    onAuthUpdate(nextAuth);
+  }, [auth, onAuthUpdate]);
+
+  const logoutAll = useCallback(async () => {
+    try {
+      await apiFetch("/api/auth/logout-all", { method: "POST" });
+    } catch (err) {
+      setToast(err.message || "Unable to logout all devices");
+    }
+    clearStoredAuth();
+    onAuthUpdate(null);
+  }, [onAuthUpdate]);
+
+  const playlistProps = useMemo(() => ({
+    playlists,
+    onCreate: createPlaylist,
+    onRename: renamePlaylist,
+    onDelete: deletePlaylist,
+    onAddSong: addSongToPlaylist,
+    onRemoveSong: removeSongFromPlaylist,
+    onReorder: reorderPlaylistSong,
+    onPlayPlaylist: playPlaylist,
+  }), [addSongToPlaylist, createPlaylist, deletePlaylist, playPlaylist, playlists, removeSongFromPlaylist, renamePlaylist, reorderPlaylistSong]);
+
   return (
     <div className="app">
+      <aside className="desktop-sidebar">
+        <div className="sidebar-brand">
+          <span className="logo-mark">SW</span>
+          <span className="logo-name">SyncWave</span>
+        </div>
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map((item) => (
+            <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
+          ))}
+        </nav>
+        <div className={`sidebar-status ${connected ? "on" : "off"}`}>{connected ? "Online" : "Reconnecting"}</div>
+      </aside>
+
       <header className="app-header">
         <div className="header-logo">
           <span className="logo-mark">SW</span>
           <span className="logo-name">SyncWave</span>
-        </div>
-        <div className="header-tabs">
-          {["home", "search", "now", "playlists"].map((item) => (
-            <button key={item} className={`htab ${tab === item ? "active" : ""}`} onClick={() => setTab(item)}>
-              {item === "home" && "Home"}
-              {item === "search" && "Search"}
-              {item === "now" && "Now Playing"}
-              {item === "playlists" && <>Library {playlists.length > 0 && <span className="htab-badge">{playlists.length}</span>}</>}
-            </button>
-          ))}
         </div>
         <div className={`conn-badge ${connected ? "on" : "off"}`}>{connected ? "Online" : "Reconnecting"}</div>
         <button className="menu-btn" onClick={() => setMenuOpen((v) => !v)} aria-label="Open menu" aria-expanded={menuOpen}>
@@ -241,60 +297,27 @@ function Shell({ auth, onLogout }) {
           <span />
           {unreadChat > 0 && <b>{unreadChat}</b>}
         </button>
-        <button className="logout-btn" onClick={onLogout}>Logout</button>
         {menuOpen && (
           <div className="hamburger-menu">
-            {[
-              ["profile", "Profile"],
-              ["devices", "Connected Devices"],
-              ["downloads", "Downloads"],
-              ["settings", "Settings"],
-              ["playlists", "Playlists"],
-              ["calls", "Video Calls"],
-              ["chat", `Chat${unreadChat ? ` (${unreadChat})` : ""}`],
-              ["about", "About"],
-            ].map(([key, label]) => (
-              <button key={key} onClick={() => setTab(key)}>{label}</button>
+            {NAV_ITEMS.map((item) => (
+              <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
             ))}
           </div>
         )}
       </header>
 
       <main className="app-main">
-        <aside className="sidebar-left">
-          <Devices />
-        </aside>
-
         <section className="app-content">
-          {tab === "home" && <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={setTab} />}
+          {tab === "home" && <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />}
           {tab === "search" && <Search />}
-          {tab === "queue" && <Queue />}
-          {tab === "playlists" && (
-            <Playlists
-              playlists={playlists}
-              onCreate={createPlaylist}
-              onRename={renamePlaylist}
-              onDelete={deletePlaylist}
-              onAddSong={addSongToPlaylist}
-              onRemoveSong={removeSongFromPlaylist}
-              onReorder={reorderPlaylistSong}
-              onPlayPlaylist={playPlaylist}
-            />
-          )}
-          {tab === "downloads" && <Downloads />}
+          {tab === "library" && <Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />}
+          {tab === "playlists" && <Playlists {...playlistProps} />}
           {tab === "chat" && <Chat deviceName={auth.deviceName} />}
-          {tab === "now" && <NowPlaying />}
+          {tab === "downloads" && <Downloads />}
           {tab === "devices" && <Devices />}
-          {tab === "profile" && <div className="simple-panel"><h2>Profile</h2><p>{auth.user?.username}</p></div>}
-          {tab === "settings" && <div className="simple-panel"><h2>Settings</h2><p>Device: {auth.deviceName}</p></div>}
-          {tab === "calls" && <div className="simple-panel"><h2>Video Calls</h2><p>Start calls from Connected Devices.</p></div>}
-          {tab === "about" && <div className="simple-panel"><h2>About SyncWave</h2><p>Real-time music, chat, and calling for your devices.</p></div>}
+          {tab === "settings" && <div className="settings-panel page-pad"><h2>Settings</h2><p>Device name: {auth.deviceName}</p><button className="ghost-action danger" onClick={onLogout}>Logout This Device</button></div>}
+          {tab === "profile" && <Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />}
         </section>
-
-        <aside className="sidebar-right">
-          <NowPlaying />
-          <Chat deviceName={auth.deviceName} />
-        </aside>
       </main>
 
       <footer className="app-footer">
@@ -302,7 +325,7 @@ function Shell({ auth, onLogout }) {
       </footer>
 
       <SyncToast msg={toast} />
-      <ChatPopup item={chatPopup} onOpen={() => setTab("chat")} onClose={() => setChatPopup(null)} />
+      <ChatPopup item={chatPopup} onOpen={() => openTab("chat")} onClose={() => setChatPopup(null)} />
       <CallModal />
     </div>
   );
@@ -356,7 +379,7 @@ export default function Root() {
       <CallProvider>
         <DownloadProvider>
           {socketError && <div className="socket-error">{socketError}</div>}
-          <Shell auth={auth} onLogout={logout} />
+          <Shell auth={auth} onAuthUpdate={setAuth} onLogout={logout} />
         </DownloadProvider>
       </CallProvider>
     </SocketProvider>

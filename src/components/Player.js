@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useSocket } from "../context/SocketContext";
 import DownloadButton from "./DownloadButton";
+import { API_URL } from "../api";
 
 function fmt(sec) {
   if (!sec || isNaN(sec)) return "0:00";
@@ -179,7 +180,25 @@ export default function Player() {
     emit(event, data);
   };
 
-  const handleEnded = () => {
+  const playSimilar = async () => {
+    if (!song?.artist && !song?.language) return false;
+    const term = [song.artist, song.language].filter(Boolean).join(" ");
+    try {
+      const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(term)}&limit=12`);
+      const data = await res.json();
+      const similar = (data.results || []).filter((item) => item.id !== song.id && item.streamUrl);
+      if (!similar.length) return false;
+      const nextQueue = [...(state?.queue || []), ...similar].filter((item, idx, list) => list.findIndex((s) => s.id === item.id) === idx).slice(0, 100);
+      emitControl("set_queue", { queue: nextQueue });
+      emitControl("play_song", { song: similar[0] });
+      return true;
+    } catch (err) {
+      debug(deviceName, "AUTOPLAY_SIMILAR_FAILED", { error: err.message });
+      return false;
+    }
+  };
+
+  const handleEnded = async () => {
     const audio = audioRef.current;
     if (repeatMode === "one" && audio) {
       audio.currentTime = 0;
@@ -192,7 +211,15 @@ export default function Player() {
       if (next) emitControl("play_song", { song: next });
       return;
     }
-    emitControl("next_song");
+    const queue = state?.queue || [];
+    const idx = queue.findIndex((item) => item.id === song?.id);
+    const hasNext = idx >= 0 && idx < queue.length - 1;
+    if (hasNext || repeatMode === "all") {
+      emitControl("next_song");
+      return;
+    }
+    const startedSimilar = await playSimilar();
+    if (!startedSimilar) emitControl("play_pause", { isPlaying: false });
   };
 
   const handleSeekEnd = (e) => {
@@ -285,7 +312,6 @@ export default function Player() {
         <button className={`sync-btn favorite-btn ${favorite ? "on" : ""}`} onClick={() => setFavorite((v) => !v)} disabled={!song}>
           {favorite ? "Liked" : "Like"}
         </button>
-        <button className="sync-btn" disabled={!song}>Playlist</button>
         {song && <DownloadButton song={song} className="sync-btn download-btn" />}
         <button className={`sync-btn ${state?.syncEnabled ? "on" : "off"}`} onClick={() => emitControl("toggle_sync", { syncEnabled: !state?.syncEnabled })}>
           {state?.syncEnabled ? "Live Sync" : "Sync Off"}

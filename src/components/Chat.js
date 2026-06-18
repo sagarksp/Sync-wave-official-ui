@@ -14,7 +14,9 @@ export default function Chat({ deviceName }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+    const ids = messages.map((message) => message._id).filter(Boolean);
+    if (ids.length) emit("chat_seen", { messageIds: ids });
+  }, [emit, messages]);
 
   const send = (e) => {
     e.preventDefault();
@@ -51,6 +53,11 @@ export default function Chat({ deviceName }) {
                 <time>{time(m.timestamp)}</time>
               </div>
               <div className="chat-bubble">{m.message}</div>
+              {mine && (
+                <div className="seen-line">
+                  {(m.seenBy || []).filter((item) => item.deviceName !== deviceName).length ? "Seen" : "Sent"}
+                </div>
+              )}
               <div className="reaction-row">
                 {["Like", "Fire", "Love"].map((label) => (
                   <button key={label} onClick={() => setReactions((prev) => ({ ...prev, [key]: prev[key] === label ? "" : label }))} className={reactions[key] === label ? "active" : ""}>

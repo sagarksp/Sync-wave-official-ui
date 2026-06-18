@@ -1,6 +1,6 @@
 import React from "react";
 import { useSocket } from "../context/SocketContext";
-import Devices from "./Devices";
+import { useCall } from "../context/CallContext";
 
 function uniqueSongs(songs) {
   const seen = new Set();
@@ -36,14 +36,25 @@ function SongRail({ title, subtitle, songs, onPlay }) {
 
 export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
   const { state } = useSocket();
+  const call = useCall();
   const queue = state?.queue || [];
   const current = state?.currentSong;
   const songs = uniqueSongs([current, ...queue].filter(Boolean));
   const recommended = uniqueSongs([...queue].reverse()).slice(0, 10);
+  const callState = call?.call || { status: "idle" };
 
   return (
     <div className="home-page">
-      <SongRail title="Recently Played" subtitle="From your active queue" songs={songs.slice(0, 10)} onPlay={onPlaySong} />
+      {callState.status !== "idle" && (
+        <section className="active-call-banner">
+          <div>
+            <span className="eyebrow">Active Call</span>
+            <strong>{callState.peer?.deviceName || "SyncWave Device"}</strong>
+            <p>{callState.status === "connected" ? "Call is running in the background." : "Call is connecting."}</p>
+          </div>
+          <button className="primary-action" onClick={() => onTab("devices")}>Open Call</button>
+        </section>
+      )}
 
       <section className="home-section continue-grid">
         <div className="section-head">
@@ -64,6 +75,8 @@ export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
           <button className="round-command" onClick={() => current ? onPlaySong(current) : onTab("search")} aria-label="Play">Play</button>
         </div>
       </section>
+
+      <SongRail title="Recently Played" subtitle="From your active queue" songs={songs.slice(0, 10)} onPlay={onPlaySong} />
 
       <SongRail title="Recommended Songs" subtitle="Based on your current queue" songs={recommended} onPlay={onPlaySong} />
 
@@ -90,9 +103,6 @@ export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
         </div>
       </section>
 
-      <section className="home-section devices-home">
-        <Devices />
-      </section>
     </div>
   );
 }
