@@ -8,6 +8,7 @@ export default function DownloadButton({ song, className = "download-btn" }) {
   const status = downloads.progress[song.id];
   const done = downloads.isDownloaded(song.id);
   const busy = status && !status.error && status.value < 100;
+  const failed = Boolean(status?.error);
 
   return (
     <button
@@ -19,7 +20,7 @@ export default function DownloadButton({ song, className = "download-btn" }) {
       disabled={busy || done}
       title={status?.error || (done ? "Downloaded for offline playback" : "Download")}
     >
-      {busy ? `${status.value}%` : done ? "Saved" : "Download"}
+      {busy ? `${status.value}%` : failed ? "Retry" : done ? "Saved" : "Download"}
     </button>
   );
 }
