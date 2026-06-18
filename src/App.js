@@ -29,10 +29,6 @@ const NAV_ITEMS = [
   ["profile", "Profile"],
 ];
 
-function isPendingPlaylistId(id) {
-  return String(id || "").startsWith("pending_");
-}
-
 function SyncToast({ msg }) {
   if (!msg) return null;
   return <div className="sync-toast">{msg}</div>;
@@ -207,7 +203,6 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
   }, [emit, state?.queue]);
 
   const savePlaylist = useCallback(async (id, patch) => {
-    if (isPendingPlaylistId(id)) return null;
     const data = await apiFetch(`/api/playlists/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -235,7 +230,6 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
 
   const deletePlaylist = useCallback((id) => {
     setPlaylists((prev) => prev.filter((playlist) => playlist.id !== id));
-    if (isPendingPlaylistId(id)) return;
     apiFetch(`/api/playlists/${id}`, { method: "DELETE" }).catch((err) => setToast(err.message || "Delete failed"));
   }, []);
 
