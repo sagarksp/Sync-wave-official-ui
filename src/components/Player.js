@@ -273,6 +273,13 @@ export default function Player() {
           <button className="ctrl play" onClick={() => emitControl("play_pause", { isPlaying: !state?.isPlaying })} disabled={!song}>
             {buffering ? "..." : state?.isPlaying ? "Pause" : "Play"}
           </button>
+          <button
+            className={`sync-btn live-sync-toggle ${state?.syncEnabled ? "on" : "off"}`}
+            onClick={() => emitControl("toggle_sync", { syncEnabled: !state?.syncEnabled })}
+            title={state?.syncEnabled ? "Live Sync Enabled" : "Live Sync Disabled"}
+          >
+            {state?.syncEnabled ? "Live Sync Enabled" : "Live Sync Disabled"}
+          </button>
           <button className="icon-ctrl" onClick={() => emitControl("next_song")} disabled={!song} title="Next" aria-label="Next">Next</button>
           <button
             className={`icon-ctrl ${repeatMode !== "off" ? "active" : ""}`}
@@ -313,9 +320,6 @@ export default function Player() {
           {favorite ? "Liked" : "Like"}
         </button>
         {song && <DownloadButton song={song} className="sync-btn download-btn" />}
-        <button className={`sync-btn ${state?.syncEnabled ? "on" : "off"}`} onClick={() => emitControl("toggle_sync", { syncEnabled: !state?.syncEnabled })}>
-          {state?.syncEnabled ? "Live Sync" : "Sync Off"}
-        </button>
         <label className="vol-wrap">
           Vol
           <input type="range" min={0} max={100} value={state?.volume ?? 80} onChange={(e) => emitControl("volume_change", { volume: Number(e.target.value) })} className="vol-input" />
