@@ -70,6 +70,48 @@ async function retryRequest(fn, attempts = 3, delay = 900) {
   throw lastError;
 }
 
+async function showChatNotification(sender, preview) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+
+  try {
+    let permission = window.Notification.permission;
+    if (permission === "denied") return;
+
+    if (permission === "default") {
+      if (typeof window.Notification.requestPermission !== "function") return;
+      permission = await window.Notification.requestPermission();
+    }
+
+    if (permission !== "granted") return;
+
+    const title = "SyncWave Chat";
+    const options = {
+      body: `${sender}: ${preview}`,
+      tag: "syncwave-chat",
+      icon: "/icon.svg",
+      badge: "/icon.svg",
+    };
+
+    if ("serviceWorker" in navigator) {
+      try {
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise((resolve) => window.setTimeout(() => resolve(null), 1500)),
+        ]);
+        if (registration?.showNotification) {
+          await registration.showNotification(title, options);
+          return;
+        }
+      } catch (err) {
+        console.warn("[SyncWave Notification] Service worker notification failed", err.message);
+      }
+    }
+
+  } catch (err) {
+    console.warn("[SyncWave Notification] Notification skipped", err.message);
+  }
+}
+
 function Shell({ auth, onAuthUpdate, onLogout }) {
   const { state, connected, emit, messages } = useSocket();
   const [tab, setTab] = useState("home");
@@ -145,13 +187,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
     setToast(`${sender}: ${preview}`);
     if (tab !== "chat") setUnreadChat((count) => count + 1);
 
-    if ("Notification" in window) {
-      if (Notification.permission === "granted") {
-        new Notification("SyncWave Chat", { body: `${sender}: ${preview}` });
-      } else if (Notification.permission === "default") {
-        Notification.requestPermission().catch(() => {});
-      }
-    }
+    showChatNotification(sender, preview);
 
     const popupTimeout = setTimeout(() => setChatPopup(null), 5200);
     const toastTimeout = setTimeout(() => setToast(""), 3200);
