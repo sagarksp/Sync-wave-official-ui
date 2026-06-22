@@ -62,7 +62,7 @@ export default function Home({ playlists, onPlaySong, onPlayPlaylist, onTab }) {
             <h2>Continue Listening</h2>
             <p>{current ? "Pick up where the room left off." : "Start a track to build your listening hub."}</p>
           </div>
-          <button className="text-action" onClick={() => onTab("now")}>Now Playing</button>
+          <button className="text-action" onClick={() => onTab("queue")}>Queue</button>
         </div>
         <div className="continue-card">
           <div className="continue-art">

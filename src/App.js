@@ -14,6 +14,7 @@ import Playlists from "./components/Playlists";
 import CallModal from "./components/CallModal";
 import Library from "./components/Library";
 import Profile from "./components/Profile";
+import Queue from "./components/Queue";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -22,12 +23,23 @@ const NAV_ITEMS = [
   ["search", "Search"],
   ["library", "Library"],
   ["playlists", "Playlists"],
+  ["queue", "Queue"],
   ["chat", "Chat"],
   ["downloads", "Downloads"],
   ["devices", "Live Devices"],
   ["settings", "Settings"],
   ["profile", "Profile"],
 ];
+
+const MOBILE_TABS = [
+  ["home", "Home"],
+  ["search", "Search"],
+  ["library", "Library"],
+  ["chat", "Chat"],
+  ["profile", "Profile"],
+];
+
+const MENU_ITEMS = NAV_ITEMS.filter(([key]) => !MOBILE_TABS.some(([mobileKey]) => mobileKey === key));
 
 function SyncToast({ msg }) {
   if (!msg) return null;
@@ -337,6 +349,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
     if (tab === "search") return <Search />;
     if (tab === "library") return <Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />;
     if (tab === "playlists") return <Playlists {...playlistProps} />;
+    if (tab === "queue") return <Queue />;
     if (tab === "chat") return <Chat deviceName={auth.deviceName} />;
     if (tab === "downloads") return <Downloads />;
     if (tab === "devices") return <Devices />;
@@ -397,7 +410,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
                 <span className="logo-mark">SW</span>
                 <span className="logo-name">SyncWave</span>
               </div>
-              {NAV_ITEMS.map((item) => (
+              {MENU_ITEMS.map((item) => (
                 <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
               ))}
             </div>
@@ -416,6 +429,12 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
       <footer className="app-footer">
         <Player />
       </footer>
+
+      <nav className="mobile-bottom-nav" aria-label="Primary navigation">
+        {MOBILE_TABS.map((item) => (
+          <NavButton key={item[0]} item={item} active={tab === item[0]} unread={unreadChat} onClick={openTab} />
+        ))}
+      </nav>
 
       <SyncToast msg={toast} />
       <ChatPopup item={chatPopup} onOpen={() => openTab("chat")} onClose={() => setChatPopup(null)} />
