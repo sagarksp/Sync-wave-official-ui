@@ -9,7 +9,7 @@ function formatDur(sec) {
 }
 
 export default function Search() {
-  const { emit, state } = useSocket();
+  const { emit, state, connected, socketId } = useSocket();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -39,6 +39,7 @@ export default function Search() {
       const res = await fetch(`${API_URL}/api/search?q=${encodeURIComponent(term)}&limit=25`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      console.log("FIRST SEARCH RESULT", data.results?.[0] || null);
       setResults(data.results || []);
     } catch (e) {
       setError("Search failed. Make sure the server is running.");
@@ -55,6 +56,17 @@ export default function Search() {
   };
 
   const playSong = (song) => {
+    console.log("PLAY CLICK", song);
+    console.log("SOCKET EMIT BEFORE", {
+      event: "play_song",
+      connected,
+      socketId,
+      id: song?.id,
+      title: song?.title,
+      videoId: song?.videoId,
+      streamUrl: song?.streamUrl,
+      hasStreamUrl: Boolean(song?.streamUrl),
+    });
     if (!song.streamUrl) {
       alert("This song has no stream URL available.");
       return;
@@ -63,14 +75,28 @@ export default function Search() {
     const newQueue = currentQueue.find((s) => s.id === song.id)
       ? currentQueue
       : [song, ...currentQueue].slice(0, 100);
-    emit("set_queue", { queue: newQueue });
-    emit("play_song", { song });
+    emit("set_queue", { queue: newQueue }, (res) => {
+      console.log("SOCKET EMIT AFTER", { event: "set_queue", res });
+    });
+    emit("play_song", { song }, (res) => {
+      console.log("SOCKET EMIT AFTER", { event: "play_song", res });
+    });
   };
 
   const addToQueue = (song) => {
+    console.log("QUEUE CLICK", song);
+    console.log("ADD TO QUEUE CLICK", {
+      connected,
+      socketId,
+      id: song?.id,
+      title: song?.title,
+      hasStreamUrl: Boolean(song?.streamUrl),
+    });
     const currentQueue = state?.queue || [];
     if (currentQueue.find((s) => s.id === song.id)) return;
-    emit("set_queue", { queue: [...currentQueue, song].slice(0, 100) });
+    emit("set_queue", { queue: [...currentQueue, song].slice(0, 100) }, (res) => {
+      console.log("SOCKET EMIT AFTER", { event: "set_queue", res });
+    });
   };
 
   return (

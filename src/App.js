@@ -1,22 +1,28 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { SocketProvider, useSocket } from "./context/SocketContext";
 import { CallProvider } from "./context/CallContext";
 import { DownloadProvider } from "./context/DownloadContext";
 import { apiFetch, clearStoredAuth, getDeviceId, getStoredAuth, storeAuth } from "./api";
 import Login from "./components/Login";
-import Home from "./components/Home";
 import Player from "./components/Player";
-import Search from "./components/Search";
-import Devices from "./components/Devices";
-import Chat from "./components/Chat";
-import Downloads from "./components/Downloads";
-import Playlists from "./components/Playlists";
 import CallModal from "./components/CallModal";
-import Library from "./components/Library";
-import Profile from "./components/Profile";
-import Queue from "./components/Queue";
+import Home from "./pages/Home";
+import Search from "./pages/Search";
+import Devices from "./pages/Devices";
+import Chat from "./pages/Chat";
+import Downloads from "./pages/Downloads";
+import Playlists from "./pages/Playlists";
+import Library from "./pages/Library";
+import Profile from "./pages/Profile";
+import Queue from "./pages/Queue";
+import Settings from "./pages/Settings";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
+
+const GenerateMusic = lazy(() => import("./components/GenerateMusic"));
+const AILibrary = lazy(() => import("./components/AILibrary"));
+const AISongDetail = lazy(() => import("./components/AISongDetail"));
 
 const NAV_ITEMS = [
   ["home", "Home"],
@@ -24,6 +30,7 @@ const NAV_ITEMS = [
   ["library", "Library"],
   ["playlists", "Playlists"],
   ["queue", "Queue"],
+  ["ai-music", "AI Music"],
   ["chat", "Chat"],
   ["downloads", "Downloads"],
   ["devices", "Live Devices"],
@@ -36,10 +43,31 @@ const MOBILE_TABS = [
   ["search", "Search"],
   ["library", "Library"],
   ["chat", "Chat"],
-  ["profile", "Profile"],
+  ["ai-music", "AI"],
 ];
 
 const MENU_ITEMS = NAV_ITEMS.filter(([key]) => !MOBILE_TABS.some(([mobileKey]) => mobileKey === key));
+
+const ROUTE_BY_TAB = {
+  home: "/home",
+  search: "/search",
+  library: "/library",
+  playlists: "/playlists",
+  queue: "/queue",
+  "ai-music": "/ai-music",
+  chat: "/chat",
+  downloads: "/downloads",
+  devices: "/devices",
+  settings: "/settings",
+  profile: "/profile",
+};
+
+function tabFromPath(pathname) {
+  if (pathname === "/" || pathname === "/home") return "home";
+  if (pathname.startsWith("/ai-song/") || pathname === "/ai-library" || pathname === "/generate-music") return "ai-music";
+  const found = Object.entries(ROUTE_BY_TAB).find(([, route]) => route === pathname);
+  return found?.[0] || "home";
+}
 
 function SyncToast({ msg }) {
   if (!msg) return null;
@@ -55,6 +83,11 @@ function ChatPopup({ item, onOpen, onClose }) {
       <span className="chat-popup-close" onClick={(e) => { e.stopPropagation(); onClose(); }}>Close</span>
     </button>
   );
+}
+
+function AISongDetailRoute({ onBack }) {
+  const { songId } = useParams();
+  return <AISongDetail songId={songId} onBack={onBack} />;
 }
 
 function NavButton({ item, active, unread, onClick }) {
@@ -126,7 +159,9 @@ async function showChatNotification(sender, preview) {
 
 function Shell({ auth, onAuthUpdate, onLogout }) {
   const { state, connected, emit, messages } = useSocket();
-  const [tab, setTab] = useState("home");
+  const navigate = useNavigate();
+  const location = useLocation();
+  const tab = tabFromPath(location.pathname);
   const [toast, setToast] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatPopup, setChatPopup] = useState(null);
@@ -136,10 +171,14 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
   const lastMessageRef = useRef("");
   const [playlists, setPlaylists] = useState([]);
 
-  const openTab = useCallback((next) => {
-    setTab(next);
+  const openTab = useCallback((next, options = {}) => {
+    const nextSongId = options.songId || "";
+    const path = next === "ai-song-detail"
+      ? `/ai-song/${encodeURIComponent(nextSongId)}`
+      : ROUTE_BY_TAB[next] || "/home";
+    navigate(path);
     setMenuOpen(false);
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     const onInstallPrompt = (event) => {
@@ -344,36 +383,10 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
     onPlayPlaylist: playPlaylist,
   }), [addSongToPlaylist, createPlaylist, deletePlaylist, playPlaylist, playlists, removeSongFromPlaylist, renamePlaylist, reorderPlaylistSong]);
 
-  const renderScreen = () => {
-    if (tab === "home") return <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />;
-    if (tab === "search") return <Search />;
-    if (tab === "library") return <Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />;
-    if (tab === "playlists") return <Playlists {...playlistProps} />;
-    if (tab === "queue") return <Queue />;
-    if (tab === "chat") return <Chat deviceName={auth.deviceName} />;
-    if (tab === "downloads") return <Downloads />;
-    if (tab === "devices") return <Devices />;
-    if (tab === "settings") return (
-      <div className="settings-panel page-pad">
-        <h2>Settings</h2>
-        <p>Device name: {auth.deviceName}</p>
-        {installPrompt && (
-          <button
-            className="primary-action"
-            onClick={async () => {
-              await installPrompt.prompt();
-              setInstallPrompt(null);
-            }}
-          >
-            Install SyncWave
-          </button>
-        )}
-        <button className="ghost-action danger" onClick={onLogout}>Logout This Device</button>
-      </div>
-    );
-    if (tab === "profile") return <Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />;
-    return <Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />;
-  };
+  const installApp = useCallback(async () => {
+    await installPrompt?.prompt();
+    setInstallPrompt(null);
+  }, [installPrompt]);
 
   return (
     <div className="app">
@@ -421,7 +434,24 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
       <main className="app-main">
         <section className="app-content">
           <ErrorBoundary key={tab} name={NAV_ITEMS.find(([key]) => key === tab)?.[1] || tab}>
-            {renderScreen()}
+            <Routes>
+              <Route path="/" element={<Navigate to="/home" replace />} />
+              <Route path="/home" element={<Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/playlists" element={<Playlists {...playlistProps} />} />
+              <Route path="/chat" element={<Chat deviceName={auth.deviceName} auth={auth} />} />
+              <Route path="/library" element={<Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />} />
+              <Route path="/devices" element={<Devices />} />
+              <Route path="/profile" element={<Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />} />
+              <Route path="/settings" element={<Settings auth={auth} installPrompt={installPrompt} onInstall={installApp} onLogout={onLogout} />} />
+              <Route path="/queue" element={<Queue />} />
+              <Route path="/downloads" element={<Downloads />} />
+              <Route path="/ai-music" element={<Suspense fallback={<div className="queue-empty">Loading AI Music...</div>}><GenerateMusic onOpenLibrary={() => navigate("/ai-library")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
+              <Route path="/generate-music" element={<Navigate to="/ai-music" replace />} />
+              <Route path="/ai-library" element={<Suspense fallback={<div className="queue-empty">Loading AI Library...</div>}><AILibrary onCreate={() => navigate("/ai-music")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
+              <Route path="/ai-song/:songId" element={<Suspense fallback={<div className="queue-empty">Loading AI Song...</div>}><AISongDetailRoute onBack={() => navigate("/ai-library")} /></Suspense>} />
+              <Route path="*" element={<Navigate to="/home" replace />} />
+            </Routes>
           </ErrorBoundary>
         </section>
       </main>
@@ -510,15 +540,17 @@ export default function Root() {
   if (!auth) return <Login onLogin={setAuth} />;
 
   return (
-    <ErrorBoundary name="SyncWave App">
-      <SocketProvider auth={auth} onSocketError={setSocketError}>
-        <CallProvider>
-          <DownloadProvider>
-            {socketError && <div className="socket-error">{socketError}</div>}
-            <Shell auth={auth} onAuthUpdate={setAuth} onLogout={logout} />
-          </DownloadProvider>
-        </CallProvider>
-      </SocketProvider>
-    </ErrorBoundary>
+    <SocketProvider auth={auth} onSocketError={setSocketError}>
+      <BrowserRouter>
+        <ErrorBoundary name="SyncWave App">
+            <CallProvider>
+              <DownloadProvider>
+              {socketError && <div className="socket-error">{socketError}</div>}
+              <Shell auth={auth} onAuthUpdate={setAuth} onLogout={logout} />
+              </DownloadProvider>
+            </CallProvider>
+        </ErrorBoundary>
+      </BrowserRouter>
+    </SocketProvider>
   );
 }

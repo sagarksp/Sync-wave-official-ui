@@ -8,13 +8,38 @@ function fmt(sec) {
 }
 
 export default function Queue() {
-  const { state, emit } = useSocket();
+  const { state, emit, connected, socketId } = useSocket();
   const [dragId, setDragId] = useState(null);
   const queue = state?.queue || [];
   const currentId = state?.currentSong?.id;
 
-  const setQueue = (next) => emit("set_queue", { queue: next });
-  const play = (song) => emit("play_song", { song });
+  const setQueue = (next) => {
+    console.log("SOCKET EMIT BEFORE", {
+      event: "set_queue",
+      connected,
+      socketId,
+      queueLength: next?.length || 0,
+    });
+    emit("set_queue", { queue: next }, (res) => {
+      console.log("SOCKET EMIT AFTER", { event: "set_queue", res });
+    });
+  };
+  const play = (song) => {
+    console.log("PLAY CLICK", song);
+    console.log("SOCKET EMIT BEFORE", {
+      event: "play_song",
+      connected,
+      socketId,
+      id: song?.id,
+      title: song?.title,
+      videoId: song?.videoId,
+      streamUrl: song?.streamUrl,
+      hasStreamUrl: Boolean(song?.streamUrl),
+    });
+    emit("play_song", { song }, (res) => {
+      console.log("SOCKET EMIT AFTER", { event: "play_song", res });
+    });
+  };
   const totalDuration = queue.reduce((sum, song) => sum + (Number(song.duration) || 0), 0);
   const remove = (e, id) => {
     e.stopPropagation();

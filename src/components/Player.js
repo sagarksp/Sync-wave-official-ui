@@ -36,9 +36,24 @@ export default function Player() {
   const [favorite, setFavorite] = useState(false);
 
   const song = state?.currentSong;
+  console.log("PLAYER RENDER");
+  console.log({
+    currentSong: state?.currentSong,
+    isPlaying: state?.isPlaying,
+    position: state?.position,
+    volume: state?.volume,
+  });
 
   useEffect(() => {
     latestStateRef.current = state;
+    console.log("PLAYER UPDATED", {
+      currentSong: state?.currentSong?.title || "",
+      videoId: state?.currentSong?.videoId || "",
+      streamUrl: state?.currentSong?.streamUrl || "",
+      isPlaying: Boolean(state?.isPlaying),
+      queueLength: state?.queue?.length || 0,
+      playerType: "audio",
+    });
   }, [state]);
 
   const safeRemoteSeek = (position, reason) => {
@@ -59,17 +74,20 @@ export default function Player() {
   const applyPlayState = async (reason) => {
     const audio = audioRef.current;
     const currentState = latestStateRef.current;
-    if (!audio || !currentState?.currentSong || !readyRef.current) return;
+    if (!audio || !currentState?.currentSong || !readyRef.current) {
+      debug(deviceName, "PLAY_SKIPPED_NOT_READY", { reason, hasAudio: Boolean(audio), hasSong: Boolean(currentState?.currentSong), ready: readyRef.current });
+      return;
+    }
 
     if (currentState.isPlaying) {
       if (audio.paused) {
-        debug(deviceName, "PLAY_APPLIED", { reason });
+        debug(deviceName, "play triggered", { reason, src: audio.currentSrc || audio.src, readyState: audio.readyState });
         await audio.play().catch((err) => {
           debug(deviceName, "PLAY_BLOCKED", { reason, error: err.message });
         });
       }
     } else if (!audio.paused) {
-      debug(deviceName, "PAUSE_APPLIED", { reason });
+      debug(deviceName, "pause triggered", { reason });
       audio.pause();
     }
   };
@@ -91,10 +109,11 @@ export default function Player() {
     loadIdRef.current = loadId;
     readyRef.current = false;
     setBuffering(true);
-    debug(deviceName, "SONG_CHANGE_RECEIVED", { title: song.title, loadId });
+    debug(deviceName, "currentSong updated", { title: song.title, songId: song.id, hasStreamUrl: Boolean(song.streamUrl), loadId });
 
     audio.pause();
     audio.src = song.streamUrl || "";
+    debug(deviceName, "player loaded", { title: song.title, src: audio.src, loadId });
     audio.load();
 
     let completed = false;
@@ -103,19 +122,26 @@ export default function Player() {
       completed = true;
       readyRef.current = true;
       setBuffering(false);
-      debug(deviceName, "PLAYER_READY", { eventName, loadId });
+      debug(deviceName, "player ready", { eventName, loadId, readyState: audio.readyState, duration: audio.duration });
       safeRemoteSeek(expectedPosition(latestStateRef.current), "song-load");
       await applyPlayState("song-load");
     };
 
     const onCanPlay = () => completeLoad("canplay");
     const onLoadedMetadata = () => completeLoad("loadedmetadata");
+    const onError = () => {
+      const err = audio.error;
+      debug(deviceName, "PLAYER_LOAD_ERROR", { code: err?.code, message: err?.message, src: audio.currentSrc || audio.src });
+      setBuffering(false);
+    };
     audio.addEventListener("canplay", onCanPlay, { once: true });
     audio.addEventListener("loadedmetadata", onLoadedMetadata, { once: true });
+    audio.addEventListener("error", onError, { once: true });
 
     return () => {
       audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("error", onError);
       if (loadIdRef.current === loadId) readyRef.current = false;
     };
   }, [song?.id]);
@@ -177,7 +203,23 @@ export default function Player() {
   const progress = duration ? (localPos / duration) * 100 : 0;
 
   const emitControl = (event, data) => {
-    emit(event, data);
+    emit(event, data, (res) => {
+      console.log("PLAYER CONTROL ACK", { event, res });
+    });
+  };
+
+  const handlePlayPause = () => {
+    console.log("PLAYER PLAY BUTTON CLICK", {
+      currentSong: song,
+      isPlaying: state?.isPlaying,
+    });
+    emitControl("play_pause", { isPlaying: !state?.isPlaying });
+  };
+
+  const handleVolume = (e) => {
+    const volume = Number(e.target.value);
+    console.log("PLAYER VOLUME CHANGE", { volume });
+    emitControl("volume_change", { volume });
   };
 
   const playSimilar = async () => {
@@ -199,6 +241,7 @@ export default function Player() {
   };
 
   const handleEnded = async () => {
+    debug(deviceName, "song ended", { title: song?.title, repeatMode, shuffle });
     const audio = audioRef.current;
     if (repeatMode === "one" && audio) {
       audio.currentTime = 0;
@@ -249,7 +292,6 @@ export default function Player() {
           setBuffering(false);
         }}
         onPause={() => debug(deviceName, "PLAYER_STATE", { state: "paused", remoteSeek: remoteSeekRef.current })}
-        crossOrigin="anonymous"
       />
 
       <div className="player-info">
@@ -270,7 +312,7 @@ export default function Player() {
         <div className="player-ctrls">
           <button className={`icon-ctrl ${shuffle ? "active" : ""}`} onClick={() => setShuffle((v) => !v)} disabled={!song} title="Shuffle" aria-label="Shuffle">Shuffle</button>
           <button className="icon-ctrl" onClick={() => emitControl("prev_song")} disabled={!song} title="Previous" aria-label="Previous">Prev</button>
-          <button className="ctrl play" onClick={() => emitControl("play_pause", { isPlaying: !state?.isPlaying })} disabled={!song}>
+          <button className="ctrl play" onClick={handlePlayPause} disabled={!song}>
             {buffering ? "..." : state?.isPlaying ? "Pause" : "Play"}
           </button>
           <button
@@ -322,7 +364,7 @@ export default function Player() {
         {song && <DownloadButton song={song} className="sync-btn download-btn" />}
         <label className="vol-wrap">
           Vol
-          <input type="range" min={0} max={100} value={state?.volume ?? 80} onChange={(e) => emitControl("volume_change", { volume: Number(e.target.value) })} className="vol-input" />
+          <input type="range" min={0} max={100} value={state?.volume ?? 80} onChange={handleVolume} className="vol-input" />
         </label>
       </div>
     </div>
