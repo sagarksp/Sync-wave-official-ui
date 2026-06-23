@@ -3,7 +3,23 @@ import { apiFetch } from "../api";
 
 function formatDate(value) {
   if (!value) return "";
-  return new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function normalizeSong(song) {
+  if (!song || typeof song !== "object") return null;
+  return {
+    id: String(song.id || song._id || ""),
+    title: String(song.title || "Untitled Song"),
+    genre: String(song.genre || ""),
+    mood: String(song.mood || ""),
+    language: String(song.language || ""),
+    status: String(song.status || ""),
+    coverImage: String(song.coverImage || ""),
+    createdAt: song.createdAt || "",
+  };
 }
 
 export default function AILibrary({ onCreate, onOpenSong }) {
@@ -15,7 +31,7 @@ export default function AILibrary({ onCreate, onOpenSong }) {
     let alive = true;
     apiFetch("/api/ai/songs")
       .then((data) => {
-        if (alive) setSongs(data.songs || []);
+        if (alive) setSongs((Array.isArray(data?.songs) ? data.songs : []).map(normalizeSong).filter(Boolean));
       })
       .catch((err) => {
         if (alive) setError(err.message || "Unable to load AI library");

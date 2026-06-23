@@ -51,6 +51,41 @@ function PromptBlock({ title, value }) {
   );
 }
 
+function normalizeSong(song) {
+  if (!song || typeof song !== "object") return null;
+  return {
+    id: String(song.id || song._id || ""),
+    title: String(song.title || "Untitled Song"),
+    lyrics: String(song.lyrics || ""),
+    genre: String(song.genre || ""),
+    mood: String(song.mood || ""),
+    voice: String(song.voice || ""),
+    language: String(song.language || ""),
+    bpm: Number(song.bpm) || 0,
+    musicPrompt: String(song.musicPrompt || ""),
+    beatPrompt: String(song.beatPrompt || ""),
+    instrumentPrompt: String(song.instrumentPrompt || ""),
+    coverPrompt: String(song.coverPrompt || ""),
+    coverImage: String(song.coverImage || ""),
+    audioUrl: String(song.audioUrl || ""),
+    status: String(song.status || ""),
+    provider: String(song.provider || ""),
+    createdAt: song.createdAt || "",
+    updatedAt: song.updatedAt || "",
+  };
+}
+
+function safeStringify(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value || {}, (key, item) => {
+    if (item && typeof item === "object") {
+      if (seen.has(item)) return "[Circular]";
+      seen.add(item);
+    }
+    return item;
+  }, 2);
+}
+
 export default function AISongDetail({ songId, onBack }) {
   const [song, setSong] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,7 +97,7 @@ export default function AISongDetail({ songId, onBack }) {
     setLoading(true);
     apiFetch(`/api/ai/songs/${songId}`)
       .then((data) => {
-        if (alive) setSong(data.song);
+        if (alive) setSong(normalizeSong(data?.song));
       })
       .catch((err) => {
         if (alive) setError(err.message || "Unable to load AI song");
@@ -73,7 +108,7 @@ export default function AISongDetail({ songId, onBack }) {
     return () => { alive = false; };
   }, [songId]);
 
-  const projectJson = useMemo(() => JSON.stringify(song || {}, null, 2), [song]);
+  const projectJson = useMemo(() => safeStringify(song), [song]);
 
   const copy = async (label, value) => {
     await navigator.clipboard?.writeText(value || "");

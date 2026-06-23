@@ -38,6 +38,28 @@ function downloadText(filename, value) {
   URL.revokeObjectURL(url);
 }
 
+function normalizeSong(item) {
+  if (!item || typeof item !== "object") return null;
+  return {
+    id: String(item.id || item._id || ""),
+    title: String(item.title || "Untitled Song"),
+    lyrics: String(item.lyrics || ""),
+    genre: String(item.genre || ""),
+    mood: String(item.mood || ""),
+    language: String(item.language || ""),
+    voice: String(item.voice || ""),
+    status: String(item.status || ""),
+    coverImage: String(item.coverImage || ""),
+    finalSongUrl: String(item.finalSongUrl || ""),
+    audioUrl: String(item.audioUrl || item.finalSongUrl || ""),
+    createdAt: item.createdAt || "",
+  };
+}
+
+function normalizeSongs(items) {
+  return (Array.isArray(items) ? items : []).map(normalizeSong).filter(Boolean);
+}
+
 export default function GenerateMusic({ onOpenLibrary }) {
   const { on, off } = useSocket();
   const [prompt, setPrompt] = useState("");
@@ -59,26 +81,27 @@ export default function GenerateMusic({ onOpenLibrary }) {
 
   useEffect(() => {
     listGeneratedSongs()
-      .then((data) => setSongs(data.songs || []))
+      .then((data) => setSongs(normalizeSongs(data?.songs)))
       .catch((err) => setError(err.message || "Unable to load generated songs"));
   }, []);
 
   useEffect(() => {
     const handleProgress = (payload) => {
       setJob(payload);
-      if (payload.song) setSong(payload.song);
+      if (payload?.song) setSong(normalizeSong(payload.song));
     };
     const handleCompleted = (payload) => {
       setJob(payload);
-      if (payload.song) {
-        setSong(payload.song);
-        setSongs((prev) => [payload.song, ...prev.filter((item) => item.id !== payload.song.id)]);
+      const nextSong = normalizeSong(payload?.song);
+      if (nextSong) {
+        setSong(nextSong);
+        setSongs((prev) => [nextSong, ...prev.filter((item) => item.id !== nextSong.id)]);
       }
       setLoading(false);
     };
     const handleFailed = (payload) => {
       setJob(payload);
-      if (payload.song) setSong(payload.song);
+      if (payload?.song) setSong(normalizeSong(payload.song));
       setError(payload.error || "Generation failed");
       setLoading(false);
     };
@@ -105,7 +128,7 @@ export default function GenerateMusic({ onOpenLibrary }) {
       try {
         const next = await getSongGenerationJob(jobId);
         setJob(next);
-        if (next.song) setSong(next.song);
+        if (next?.song) setSong(normalizeSong(next.song));
         if (next.status === "completed" || next.status === "failed") {
           window.clearInterval(pollRef.current);
           setLoading(false);
@@ -139,8 +162,10 @@ export default function GenerateMusic({ onOpenLibrary }) {
   const finalUrl = absoluteUrl(song?.finalSongUrl);
 
   const playSong = (item) => {
-    setSong(item);
-    setActiveId(item.id);
+    const nextSong = normalizeSong(item);
+    if (!nextSong) return;
+    setSong(nextSong);
+    setActiveId(nextSong.id);
     window.setTimeout(() => {
       audioRef.current?.play().then(() => setPlaying(true)).catch((err) => setError(err.message));
     }, 30);
