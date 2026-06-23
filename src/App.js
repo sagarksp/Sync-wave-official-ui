@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   ["library", "Library"],
   ["playlists", "Playlists"],
   ["queue", "Queue"],
-  ["ai-music", "AI Music"],
+  ["music-studio", "AI Music Studio"],
   ["chat", "Chat"],
   ["downloads", "Downloads"],
   ["devices", "Live Devices"],
@@ -43,7 +43,7 @@ const MOBILE_TABS = [
   ["search", "Search"],
   ["library", "Library"],
   ["chat", "Chat"],
-  ["ai-music", "AI"],
+  ["music-studio", "AI"],
 ];
 
 const MENU_ITEMS = NAV_ITEMS.filter(([key]) => !MOBILE_TABS.some(([mobileKey]) => mobileKey === key));
@@ -54,7 +54,7 @@ const ROUTE_BY_TAB = {
   library: "/library",
   playlists: "/playlists",
   queue: "/queue",
-  "ai-music": "/ai-music",
+  "music-studio": "/music-studio",
   chat: "/chat",
   downloads: "/downloads",
   devices: "/devices",
@@ -64,7 +64,7 @@ const ROUTE_BY_TAB = {
 
 function tabFromPath(pathname) {
   if (pathname === "/" || pathname === "/home") return "home";
-  if (pathname.startsWith("/ai-song/") || pathname === "/ai-library" || pathname === "/generate-music") return "ai-music";
+  if (pathname === "/music-studio" || pathname.startsWith("/ai-song/") || pathname === "/ai-library" || pathname === "/generate-music" || pathname === "/ai-music") return "music-studio";
   const found = Object.entries(ROUTE_BY_TAB).find(([, route]) => route === pathname);
   return found?.[0] || "home";
 }
@@ -83,6 +83,15 @@ function ChatPopup({ item, onOpen, onClose }) {
       <span className="chat-popup-close" onClick={(e) => { e.stopPropagation(); onClose(); }}>Close</span>
     </button>
   );
+}
+
+function chatNotificationPreview(message) {
+  if (message?.notificationPreview !== undefined && message?.notificationPreview !== null) {
+    return String(message.notificationPreview).slice(0, 96);
+  }
+  const raw = String(message?.text || message?.message || "");
+  if (/^\[?encrypted( message)?\]?$/i.test(raw.trim())) return message?.attachments?.length ? "Attachment" : "";
+  return raw.slice(0, 96);
 }
 
 function AISongDetailRoute({ onBack }) {
@@ -119,6 +128,9 @@ async function showChatNotification(sender, preview) {
   if (typeof window === "undefined" || !("Notification" in window)) return;
 
   try {
+    const safeSender = String(sender || "SyncWave");
+    const safePreview = String(preview || "");
+    console.log("NOTIFICATION_BODY", { sender: safeSender, body: safePreview });
     let permission = window.Notification.permission;
     if (permission === "denied") return;
 
@@ -131,7 +143,7 @@ async function showChatNotification(sender, preview) {
 
     const title = "SyncWave Chat";
     const options = {
-      body: `${sender}: ${preview}`,
+      body: `${safeSender}: ${safePreview}`,
       tag: "syncwave-chat",
       icon: "/icon.svg",
       badge: "/icon.svg",
@@ -145,12 +157,15 @@ async function showChatNotification(sender, preview) {
         ]);
         if (registration?.showNotification) {
           await registration.showNotification(title, options);
+          console.log("NOTIFICATION_SENT", { title, body: options.body, serviceWorker: true });
           return;
         }
       } catch (err) {
         console.warn("[SyncWave Notification] Service worker notification failed", err.message);
       }
     }
+    new window.Notification(title, options);
+    console.log("NOTIFICATION_SENT", { title, body: options.body, serviceWorker: false });
 
   } catch (err) {
     console.warn("[SyncWave Notification] Notification skipped", err.message);
@@ -225,15 +240,16 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
   }, [tab]);
 
   useEffect(() => {
-    const latest = messages[messages.length - 1];
+    const safeMessages = Array.isArray(messages) ? messages : [];
+    const latest = safeMessages[safeMessages.length - 1];
     if (!latest) return;
-    const id = latest._id || `${latest.timestamp}-${latest.deviceName}-${latest.message}`;
+    const id = latest?._id || `${latest?.timestamp || ""}-${latest?.deviceName || ""}-${latest?.message || latest?.text || ""}`;
     if (lastMessageRef.current === id) return;
     lastMessageRef.current = id;
-    if (latest.deviceName === auth.deviceName) return;
+    if (latest?.deviceName === auth?.deviceName) return;
 
-    const preview = String(latest.message || "").slice(0, 96);
-    const sender = latest.deviceName || "SyncWave";
+    const preview = chatNotificationPreview(latest);
+    const sender = latest?.senderName || latest?.deviceName || "SyncWave";
     setChatPopup({ sender, preview });
     setToast(`${sender}: ${preview}`);
     if (tab !== "chat") setUnreadChat((count) => count + 1);
@@ -446,9 +462,10 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
               <Route path="/settings" element={<Settings auth={auth} installPrompt={installPrompt} onInstall={installApp} onLogout={onLogout} />} />
               <Route path="/queue" element={<Queue />} />
               <Route path="/downloads" element={<Downloads />} />
-              <Route path="/ai-music" element={<Suspense fallback={<div className="queue-empty">Loading AI Music...</div>}><GenerateMusic onOpenLibrary={() => navigate("/ai-library")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
-              <Route path="/generate-music" element={<Navigate to="/ai-music" replace />} />
-              <Route path="/ai-library" element={<Suspense fallback={<div className="queue-empty">Loading AI Library...</div>}><AILibrary onCreate={() => navigate("/ai-music")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
+              <Route path="/ai-music" element={<Navigate to="/music-studio" replace />} />
+              <Route path="/generate-music" element={<Navigate to="/music-studio" replace />} />
+              <Route path="/music-studio" element={<Suspense fallback={<div className="queue-empty">Loading AI Music...</div>}><GenerateMusic onOpenLibrary={() => navigate("/ai-library")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
+              <Route path="/ai-library" element={<Suspense fallback={<div className="queue-empty">Loading AI Library...</div>}><AILibrary onCreate={() => navigate("/music-studio")} onOpenSong={(id) => navigate(`/ai-song/${encodeURIComponent(id)}`)} /></Suspense>} />
               <Route path="/ai-song/:songId" element={<Suspense fallback={<div className="queue-empty">Loading AI Song...</div>}><AISongDetailRoute onBack={() => navigate("/ai-library")} /></Suspense>} />
               <Route path="*" element={<Navigate to="/home" replace />} />
             </Routes>

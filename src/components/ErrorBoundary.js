@@ -20,6 +20,9 @@ export default class ErrorBoundary extends React.Component {
       userAgent: navigator.userAgent,
       time: new Date().toISOString(),
     };
+    if ((this.props.name || "").toLowerCase() === "chat") {
+      console.error("CHAT_RENDER_ERROR", details);
+    }
     console.error("[SyncWave Render Crash]", details);
     try {
       localStorage.setItem("syncwave_last_render_crash", JSON.stringify(details));

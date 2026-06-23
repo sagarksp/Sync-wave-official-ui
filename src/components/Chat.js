@@ -10,8 +10,32 @@ const IMAGE_MAX = 10 * 1024 * 1024;
 const DOC_MAX = 25 * 1024 * 1024;
 const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🔥", "🎵"];
 
-function time(value) {
-  return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function safeText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+}
+
+function formatDate(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  try {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch (err) {
+    return "";
+  }
+}
+
+function getMessageText(message) {
+  return safeText(message?.text || message?.message || "");
+}
+
+function getSenderName(message) {
+  return safeText(message?.senderName || message?.deviceName || "Unknown");
+}
+
+function getMessageKey(item, index) {
+  return item?._id?.toString?.() || item?.id?.toString?.() || index.toString();
 }
 
 function fileLimit(file) {
@@ -96,27 +120,33 @@ async function encryptedFileDataUrl(key, file) {
 }
 
 function plainPreview(message) {
-  return String(message.decryptedText || message.message || "Attachment").slice(0, 120);
+  return safeText(message?.decryptedText || message?.notificationPreview || getMessageText(message) || "Attachment").slice(0, 120);
 }
 
 function AttachmentCard({ item, chatKey }) {
-  const [view, setView] = useState({ name: item.name || "Attachment", type: item.type || "", url: item.dataUrl || "", loading: Boolean(item.encrypted) });
+  const safeItem = item || {};
+  const [view, setView] = useState({
+    name: safeText(safeItem?.name, "Attachment"),
+    type: safeText(safeItem?.type),
+    url: safeText(safeItem?.dataUrl),
+    loading: Boolean(safeItem?.encrypted),
+  });
 
   useEffect(() => {
     let alive = true;
     let objectUrl = "";
     async function loadEncrypted() {
-      if (!item.encrypted || !chatKey) return;
+      if (!safeItem?.encrypted || !chatKey) return;
       try {
         const [name, type] = await Promise.all([
-          decryptString(chatKey, item.encryptedName).catch(() => "Attachment"),
-          decryptString(chatKey, item.encryptedType).catch(() => "application/octet-stream"),
+          decryptString(chatKey, safeItem?.encryptedName).catch(() => "Attachment"),
+          decryptString(chatKey, safeItem?.encryptedType).catch(() => "application/octet-stream"),
         ]);
-        const res = await fetch(`${API_URL}${item.fileUrl}`);
+        const res = await fetch(`${API_URL}${safeText(safeItem?.fileUrl)}`);
         const encrypted = await res.arrayBuffer();
-        const decrypted = await decryptBytes(chatKey, { iv: item.iv, data: arrayBufferToBase64(encrypted) });
+        const decrypted = await decryptBytes(chatKey, { iv: safeItem?.iv, data: arrayBufferToBase64(encrypted) });
         objectUrl = URL.createObjectURL(new Blob([decrypted], { type }));
-        console.log("ATTACHMENT_RECEIVED", { name, type, size: item.size });
+        console.log("ATTACHMENT_RECEIVED", { name, type, size: safeItem?.size });
         if (alive) setView({ name, type, url: objectUrl, loading: false });
       } catch (err) {
         console.warn("ATTACHMENT_DECRYPT_FAILED", err.message);
@@ -128,7 +158,7 @@ function AttachmentCard({ item, chatKey }) {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [chatKey, item]);
+  }, [chatKey, safeItem]);
 
   const isImage = view.type?.startsWith("image/");
   return (
@@ -141,34 +171,35 @@ function AttachmentCard({ item, chatKey }) {
         <span className="attachment-icon">{view.type?.includes("pdf") ? "PDF" : "DOC"}</span>
       )}
       <span>{view.name}</span>
-      <small>{sizeLabel(item.size)}</small>
+      <small>{sizeLabel(safeItem?.size)}</small>
     </a>
   );
 }
 
 function MessageText({ message, chatKey, onDecrypted }) {
-  const [text, setText] = useState(message.encrypted ? "" : message.message);
+  const encrypted = Boolean(message?.encrypted);
+  const [text, setText] = useState(encrypted ? "" : getMessageText(message));
   const [reply, setReply] = useState(null);
 
   useEffect(() => {
     let alive = true;
     async function decrypt() {
-      if (!message.encrypted || !chatKey) return;
+      if (!encrypted || !chatKey) return;
       try {
-        const decrypted = await decryptString(chatKey, message.encryptedMessage);
-        const replyText = message.replyTo?.messageId ? {
-          messageId: message.replyTo.messageId,
-          sender: await decryptString(chatKey, message.replyTo.sender).catch(() => ""),
-          text: await decryptString(chatKey, message.replyTo.text).catch(() => ""),
+        const decrypted = await decryptString(chatKey, message?.encryptedMessage);
+        const replyText = message?.replyTo?.messageId ? {
+          messageId: message?.replyTo?.messageId,
+          sender: await decryptString(chatKey, message?.replyTo?.sender).catch(() => ""),
+          text: await decryptString(chatKey, message?.replyTo?.text).catch(() => ""),
         } : null;
-        console.log("MESSAGE_DECRYPTED", { messageId: message._id });
+        console.log("MESSAGE_DECRYPTED", { messageId: message?._id?.toString?.() || "" });
         if (alive) {
           setText(decrypted);
           setReply(replyText);
-          onDecrypted(message._id, decrypted);
+          onDecrypted(message?._id, decrypted);
         }
       } catch (err) {
-        console.warn("MESSAGE_DECRYPT_FAILED", { messageId: message._id, error: err.message });
+        console.warn("MESSAGE_DECRYPT_FAILED", { messageId: message?._id?.toString?.() || "", error: err.message });
         if (alive) setText("[Unable to decrypt message]");
       }
     }
@@ -176,26 +207,27 @@ function MessageText({ message, chatKey, onDecrypted }) {
     return () => { alive = false; };
   }, [
     chatKey,
-    message._id,
-    message.encrypted,
-    message.encryptedMessage?.iv,
-    message.encryptedMessage?.data,
-    message.replyTo?.messageId,
-    message.replyTo?.sender?.iv,
-    message.replyTo?.sender?.data,
-    message.replyTo?.text?.iv,
-    message.replyTo?.text?.data,
-    message.message,
+    message?._id,
+    encrypted,
+    message?.encryptedMessage?.iv,
+    message?.encryptedMessage?.data,
+    message?.replyTo?.messageId,
+    message?.replyTo?.sender?.iv,
+    message?.replyTo?.sender?.data,
+    message?.replyTo?.text?.iv,
+    message?.replyTo?.text?.data,
+    message?.message,
+    message?.text,
     onDecrypted,
   ]);
 
-  const legacyReply = !message.encrypted && message.replyTo?.text;
+  const legacyReply = !encrypted && message?.replyTo?.text;
   return (
     <>
       {(reply || legacyReply) && (
         <div className="reply-preview">
-          <strong>↩ Replying to: {(reply?.sender || message.replyTo?.sender || "Message")}</strong>
-          <span>{reply?.text || message.replyTo?.text || ""}</span>
+          <strong>↩ Replying to: {(reply?.sender || message?.replyTo?.sender || "Message")}</strong>
+          <span>{reply?.text || message?.replyTo?.text || ""}</span>
         </div>
       )}
       {text && <p>{text}</p>}
@@ -216,26 +248,34 @@ export default function Chat({ deviceName, auth }) {
   const bottomRef = useRef(null);
   const typingRef = useRef(null);
   const fileRef = useRef(null);
-  const peerDevice = (state?.devices || []).find((device) => device.deviceId !== deviceId);
+  const safeMessages = useMemo(() => Array.isArray(messages) ? messages.filter(Boolean) : [], [messages]);
+  const safeTypingDevices = Array.isArray(typingDevices) ? typingDevices.filter(Boolean) : [];
+  const safeDeviceName = safeText(deviceName, "Unknown Device");
+  const peerDevice = (state?.devices || []).find((device) => device?.deviceId !== deviceId);
 
   useEffect(() => {
-    deriveChatKey(auth, deviceName)
+    if (!window.crypto?.subtle) {
+      setError("Encryption unavailable on this device.");
+      return;
+    }
+    deriveChatKey(auth, safeDeviceName)
       .then(setChatKey)
       .catch((err) => setError(`Encryption unavailable: ${err.message}`));
-  }, [auth, deviceName]);
+  }, [auth, safeDeviceName]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    const ids = messages.map((message) => message._id).filter(Boolean);
+    const ids = safeMessages.map((message) => message?._id).filter(Boolean);
     if (ids.length) emit("chat_seen", { messageIds: ids });
-  }, [emit, messages]);
+  }, [emit, safeMessages]);
 
-  const decryptedMessages = useMemo(() => messages.map((message) => ({
+  const decryptedMessages = useMemo(() => safeMessages.map((message) => ({
     ...message,
-    decryptedText: decryptedText[message._id],
-  })), [decryptedText, messages]);
+    decryptedText: decryptedText[message?._id],
+  })), [decryptedText, safeMessages]);
 
   const rememberDecryptedText = useCallback((id, value) => {
+    if (!id) return;
     setDecryptedText((prev) => prev[id] === value ? prev : { ...prev, [id]: value });
   }, []);
 
@@ -284,6 +324,7 @@ export default function Chat({ deviceName, auth }) {
       emit("chat_message", {
         encrypted: true,
         encryptedMessage,
+        notificationPreview: message,
         message: "",
         attachments: encryptedAttachments,
         replyTo: encryptedReply,
@@ -339,8 +380,8 @@ export default function Chat({ deviceName, auth }) {
 
   const createReply = (m) => {
     const value = {
-      messageId: m._id,
-      sender: m.deviceName,
+      messageId: m?._id,
+      sender: getSenderName(m),
       text: plainPreview(m),
     };
     console.log("REPLY_CREATED", value);
@@ -348,8 +389,8 @@ export default function Chat({ deviceName, auth }) {
   };
 
   const addReaction = (m, emoji) => {
-    emit("chat_reaction", { messageId: m._id, emoji }, (res) => {
-      console.log("REACTION_ADDED", { messageId: m._id, emoji, res });
+    emit("chat_reaction", { messageId: m?._id, emoji }, (res) => {
+      console.log("REACTION_ADDED", { messageId: m?._id, emoji, res });
       if (!res?.ok) setError(res?.error || "Reaction failed");
     });
   };
@@ -359,7 +400,7 @@ export default function Chat({ deviceName, auth }) {
       <div className="panel-header">
         <div>
           <span className="panel-title">Chat</span>
-          <div className="panel-badge">{messages.length} messages</div>
+          <div className="panel-badge">{safeMessages.length} messages</div>
         </div>
         <div className="panel-actions">
           {peerDevice && (
@@ -373,37 +414,40 @@ export default function Chat({ deviceName, auth }) {
       </div>
 
       <div className="chat-list">
+        {!chatKey && !error && <div className="chat-empty">Preparing secure chat...</div>}
         {decryptedMessages.length === 0 && <div className="chat-empty">Messages from your devices appear here.</div>}
-        {decryptedMessages.map((m) => {
-          const mine = m.deviceName === deviceName;
-          const key = m._id || `${m.timestamp}-${m.message}`;
-          const seenBy = (m.seenBy || []).filter((item) => item.deviceName !== deviceName);
+        {decryptedMessages.map((m, index) => {
+          const mine = getSenderName(m) === safeDeviceName;
+          const key = getMessageKey(m, index);
+          const attachmentsList = Array.isArray(m?.attachments) ? m.attachments : [];
+          const reactionsList = Array.isArray(m?.reactions) ? m.reactions : [];
+          const seenBy = (Array.isArray(m?.seenBy) ? m.seenBy : []).filter((item) => item?.deviceName !== safeDeviceName);
           return (
             <div key={key} className={`chat-message ${mine ? "mine" : ""}`} onDoubleClick={() => createReply(m)} onContextMenu={(event) => { event.preventDefault(); createReply(m); }}>
               <div className="chat-meta">
-                <span>{m.deviceName}</span>
-                <time>{time(m.timestamp)}</time>
+                <span>{getSenderName(m)}</span>
+                <time>{m?.createdAt || m?.timestamp ? formatDate(m?.createdAt || m?.timestamp) : ""}</time>
                 <button type="button" onClick={() => createReply(m)}>Reply</button>
               </div>
               <div className="chat-bubble">
                 <MessageText message={m} chatKey={chatKey} onDecrypted={rememberDecryptedText} />
-                {!!m.attachments?.length && (
+                {!!attachmentsList.length && (
                   <div className="attachment-grid">
-                    {m.attachments.map((item, idx) => <AttachmentCard key={`${item.name}-${idx}`} item={item} chatKey={chatKey} />)}
+                    {attachmentsList.map((item, idx) => <AttachmentCard key={`${safeText(item?.name, "attachment")}-${idx}`} item={item} chatKey={chatKey} />)}
                   </div>
                 )}
                 <div className="reaction-bar">
                   {REACTIONS.map((emoji) => <button key={emoji} type="button" onClick={() => addReaction(m, emoji)}>{emoji}</button>)}
                 </div>
               </div>
-              {!!m.reactions?.length && (
+              {!!reactionsList.length && (
                 <div className="reaction-line">
-                  {m.reactions.map((item, idx) => <span key={`${item.deviceId}-${item.emoji}-${idx}`}>{item.emoji}</span>)}
+                  {reactionsList.map((item, idx) => <span key={`${item?.deviceId || "device"}-${item?.emoji || "reaction"}-${idx}`}>{item?.emoji || ""}</span>)}
                 </div>
               )}
               {mine && (
                 <div className="seen-line">
-                  {seenBy.length ? `✓✓ Seen by ${seenBy.map((item) => item.deviceName).join(", ")}` : m._id ? "✓✓ Delivered" : "✓ Sent"}
+                  {seenBy.length ? `✓✓ Seen by ${seenBy.map((item) => item?.deviceName || "Unknown").join(", ")}` : m?._id ? "✓✓ Delivered" : "✓ Sent"}
                 </div>
               )}
             </div>
@@ -413,7 +457,7 @@ export default function Chat({ deviceName, auth }) {
       </div>
 
       <div className="typing-line">
-        {typingDevices.length ? `${typingDevices.join(", ")} typing...` : error}
+        {safeTypingDevices.length ? `${safeTypingDevices.join(", ")} typing...` : error}
       </div>
 
       {replyTo && (
@@ -438,7 +482,7 @@ export default function Chat({ deviceName, auth }) {
         <input ref={fileRef} type="file" accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,.pdf,.doc,.docx,.txt,application/pdf,text/plain" multiple onChange={addFiles} hidden />
         <button type="button" className="composer-icon" onClick={() => fileRef.current?.click()} title="Attach file">+</button>
         <input value={text} onChange={handleChange} placeholder="Message your devices" maxLength={1000} />
-        <button className="send-btn" disabled={sending || (!text.trim() && !attachments.length)}>{sending ? "Sending" : "Send"}</button>
+        <button className="send-btn" disabled={sending || !chatKey || (!text.trim() && !attachments.length)}>{sending ? "Sending" : "Send"}</button>
       </form>
     </div>
   );

@@ -100,12 +100,15 @@ export function SocketProvider({ children, auth, onSocketError }) {
         syncEnabled: typeof s?.syncEnabled === "boolean" ? s.syncEnabled : prev?.syncEnabled ?? true,
       }));
     });
-    socket.on("messages_history", (items) => setMessages(items || []));
-    socket.on("chat_message", (item) => setMessages((prev) => [...prev, item].slice(-120)));
+    socket.on("messages_history", (items) => setMessages(Array.isArray(items) ? items.filter(Boolean) : []));
+    socket.on("chat_message", (item) => {
+      if (!item) return;
+      setMessages((prev) => [...(Array.isArray(prev) ? prev : []), item].slice(-120));
+    });
     socket.on("message_reaction", ({ messageId, reaction }) => {
-      setMessages((prev) => prev.map((message) => {
-        if (String(message._id) !== String(messageId)) return message;
-        const reactions = (message.reactions || []).filter((item) => !(item.deviceId === reaction.deviceId && item.emoji === reaction.emoji));
+      setMessages((prev) => (Array.isArray(prev) ? prev : []).map((message) => {
+        if (String(message?._id) !== String(messageId)) return message;
+        const reactions = (Array.isArray(message?.reactions) ? message.reactions : []).filter((item) => !(item?.deviceId === reaction?.deviceId && item?.emoji === reaction?.emoji));
         return { ...message, reactions: [...reactions, reaction] };
       }));
     });
@@ -113,17 +116,17 @@ export function SocketProvider({ children, auth, onSocketError }) {
       const ids = new Set(messageIds || []);
       setMessages((prev) => {
         let changed = false;
-        const next = prev.map((message) => {
-          if (!ids.has(message._id)) return message;
-          const seenBy = message.seenBy || [];
-          if (seenBy.some((item) => item.deviceId === seen.deviceId)) return message;
+        const next = (Array.isArray(prev) ? prev : []).map((message) => {
+          if (!ids.has(message?._id)) return message;
+          const seenBy = Array.isArray(message?.seenBy) ? message.seenBy : [];
+          if (seenBy.some((item) => item?.deviceId === seen?.deviceId)) return message;
           changed = true;
           return { ...message, seenBy: [...seenBy, seen] };
         });
         return changed ? next : prev;
       });
     });
-    socket.on("typing", ({ devices }) => setTypingDevices(devices || []));
+    socket.on("typing", ({ devices } = {}) => setTypingDevices(Array.isArray(devices) ? devices.filter(Boolean) : []));
     socket.on("force_logout", () => {
       localStorage.removeItem("syncwave_auth");
       sessionStorage.removeItem("syncwave_auth");
