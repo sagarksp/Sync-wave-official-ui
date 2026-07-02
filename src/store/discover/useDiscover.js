@@ -6,7 +6,6 @@ import {
   getDiscoverReels,
   getDiscoverTrending,
   refreshDiscoverNews,
-  searchDiscoverReels,
   sendDiscoverInteraction,
 } from "../../services/discover/discoverApi";
 import { discoverLog } from "../../services/discover/discoverLogger";
@@ -69,6 +68,7 @@ export default function useDiscover() {
   const [bookmarks, setBookmarks] = useState({ articles: [], reels: [] });
   const [loading, setLoading] = useState({ feed: false, reels: false, meta: false });
   const [hasFetched, setHasFetched] = useState({ feed: false, reels: false });
+  const [status, setStatus] = useState({ feed: "idle", reels: "idle" });
   const [error, setError] = useState("");
   const [reelSearch, setReelSearch] = useState({ query: "", active: false, emptyMessage: "" });
   const sessionId = useRef(`discover_${Date.now()}_${Math.random().toString(16).slice(2)}`);
@@ -113,6 +113,7 @@ export default function useDiscover() {
     console.log("[FEED REQUEST]", { reset, page, query: feedQuery });
     discoverLog("Feed", "request", { reset, page, query: feedQuery });
     setLoading((prev) => ({ ...prev, feed: true }));
+    setStatus((prev) => ({ ...prev, feed: "loading" }));
     try {
       const data = await getDiscoverFeed({ ...feedQuery, page, limit: 10 });
       console.log("[RESPONSE]", data);
@@ -122,14 +123,16 @@ export default function useDiscover() {
       setFeedPage(page);
       setFeedNextPage(data.nextPage);
       setHasFetched((prev) => ({ ...prev, feed: true }));
+      setStatus((prev) => ({ ...prev, feed: data.articles?.length || (!reset && feed.length) ? "success" : "empty" }));
     } catch (err) {
       console.log("[ERROR]", err);
       discoverLog("Feed", "error", { page, error: err.message });
       setError("Feed is temporarily unavailable. Retry in a moment.");
+      setStatus((prev) => ({ ...prev, feed: "error" }));
     } finally {
       setLoading((prev) => ({ ...prev, feed: false }));
     }
-  }, [feedNextPage, feedQuery]);
+  }, [feed.length, feedNextPage, feedQuery]);
 
   const activeReelCategory = useMemo(() => {
     const selected = filters.categories?.[0] || "all";
@@ -141,8 +144,14 @@ export default function useDiscover() {
     if (!reset && pageToken === null) return;
     if (reset) reelSearchSeq.current += 1;
     console.log("[FILTER]", activeReelCategory);
+    console.log("[REELS STATUS]", "loading");
     discoverLog("Reels", "request", { reset, category: activeReelCategory, pageToken });
     setLoading((prev) => ({ ...prev, reels: true }));
+    setStatus((prev) => ({ ...prev, reels: "loading" }));
+    if (reset) {
+      setReels([]);
+      setReelSearch({ query: "", active: false, emptyMessage: "" });
+    }
     try {
       const data = await getDiscoverReels({ category: activeReelCategory, pageToken, limit: 10 });
       console.log("[RESPONSE]", data);
@@ -153,10 +162,14 @@ export default function useDiscover() {
       setReelNextPageToken(data.nextPageToken || null);
       setReelSearch({ query: "", active: false, emptyMessage: data.reels?.length ? "" : `No videos found for '${activeReelCategory}'` });
       setHasFetched((prev) => ({ ...prev, reels: true }));
+      setStatus((prev) => ({ ...prev, reels: data.reels?.length ? "success" : "empty" }));
+      console.log("[REELS STATUS]", data.reels?.length ? "success" : "empty");
     } catch (err) {
       console.log("[ERROR]", err);
       discoverLog("Reels", "error", { category: activeReelCategory, error: err.message });
       setError(err.message === "Network unavailable" ? "Network unavailable. Showing cached content when available." : "Reels are temporarily unavailable. Try again in a moment.");
+      setStatus((prev) => ({ ...prev, reels: "error" }));
+      console.log("[REELS STATUS]", "error");
     } finally {
       setLoading((prev) => ({ ...prev, reels: false }));
     }
@@ -164,62 +177,41 @@ export default function useDiscover() {
 
   const searchReels = useCallback(async (query) => {
     const clean = String(query || "").trim();
-    const seq = reelSearchSeq.current + 1;
-    reelSearchSeq.current = seq;
-    discoverLog("Search", "reels_state_request", { query: clean });
+    discoverLog("Search", "reels_local_filter", { query: clean, available: reels.length });
     console.log("[SEARCH]", clean);
     if (!clean) {
       setReelSearch({ query: "", active: false, emptyMessage: "" });
-      await loadReels({ reset: true });
-      return { reels: [] };
+      return { reels };
     }
-    setLoading((prev) => ({ ...prev, reels: true }));
-    setError("");
-    try {
-      const data = await searchDiscoverReels(clean);
-      const nextReels = uniqueById(data.reels || []);
-      console.log("[RESPONSE]", data);
-      console.log("[REEL COUNT]", nextReels.length);
-      if (seq !== reelSearchSeq.current) {
-        discoverLog("Search", "stale_response_ignored", { query: clean, seq, current: reelSearchSeq.current });
-        return { ...data, reels: nextReels, stale: true };
-      }
-      discoverLog("Search", "reels_state_response", {
-        query: clean,
-        count: nextReels.length,
-        source: data.recommendationSource,
-        fromCache: data.fromCache,
-        remaining: data.quota?.remaining,
-      });
-      setReels(nextReels);
-      setReelPageToken("");
-      setReelNextPageToken(data.nextPageToken || null);
-      setReelSearch({
-        query: clean,
-        active: true,
-        emptyMessage: nextReels.length ? "" : `No videos found for '${clean}'`,
-      });
-      if (!nextReels.length) console.log("[EMPTY]", `No videos found for '${clean}'`);
-      setHasFetched((prev) => ({ ...prev, reels: true }));
-      writeInterest(clean.toLowerCase(), "search");
-      return { ...data, reels: nextReels };
-    } catch (err) {
-      console.log("[ERROR]", err);
-      discoverLog("Search", "reels_state_error", { query: clean, status: err.status, error: err.message });
-      if (err.status === 429) {
-        setError("Search limit reached. Please try again tomorrow.");
-      } else if (err.message === "Network unavailable") {
-        setError("Network unavailable. Showing cached reels when available.");
-      } else if (err.message === "Request timed out") {
-        setError("API timeout. Retry when your connection is stable.");
-      } else {
-        setError("Network error. Retry search in a moment.");
-      }
-      throw err;
-    } finally {
-      setLoading((prev) => ({ ...prev, reels: false }));
-    }
-  }, [loadReels]);
+    const lower = clean.toLowerCase();
+    const matches = reels.filter((reel) => [
+      reel.title,
+      reel.description,
+      reel.category,
+      reel.creator?.displayName,
+      ...(reel.hashtags || []),
+    ].some((value) => String(value || "").toLowerCase().includes(lower)));
+    setReelSearch({
+      query: clean,
+      active: true,
+      emptyMessage: matches.length ? "" : `No reels matching '${clean}'`,
+    });
+    if (!matches.length) console.log("[EMPTY]", `No reels matching '${clean}'`);
+    writeInterest(clean.toLowerCase(), "search");
+    return { reels: matches };
+  }, [reels]);
+
+  const visibleReels = useMemo(() => {
+    const clean = reelSearch.query.trim().toLowerCase();
+    if (!clean) return reels;
+    return reels.filter((reel) => [
+      reel.title,
+      reel.description,
+      reel.category,
+      reel.creator?.displayName,
+      ...(reel.hashtags || []),
+    ].some((value) => String(value || "").toLowerCase().includes(clean)));
+  }, [reelSearch.query, reels]);
 
   const reload = useCallback(() => {
     discoverLog("Discover", "reload", { category: activeReelCategory, feedQuery });
@@ -274,8 +266,11 @@ export default function useDiscover() {
     interact,
     loading,
     hasFetched,
+    status,
     meta,
     reels,
+    visibleReels,
+    activeReelCategory,
     reelPage: reelPageToken,
     reelNextPage: reelNextPageToken,
     reelSearch,

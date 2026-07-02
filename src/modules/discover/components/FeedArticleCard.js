@@ -14,7 +14,7 @@ function CommentPanel({ article, open, onClose }) {
   const [body, setBody] = useState("");
   useEffect(() => {
     if (!open) return;
-    getDiscoverComments(article.feedType === "reel" ? "reel" : "article", article.id).then((data) => setComments(data.comments || [])).catch(() => setComments([]));
+    getDiscoverComments("article", article.id).then((data) => setComments(data.comments || [])).catch(() => setComments([]));
   }, [article.id, open]);
   if (!open) return null;
   return (
@@ -29,7 +29,7 @@ function CommentPanel({ article, open, onClose }) {
           event.preventDefault();
           const text = body.trim();
           if (!text) return;
-          addDiscoverComment(article.feedType === "reel" ? "reel" : "article", article.id, text).then((data) => {
+          addDiscoverComment("article", article.id, text).then((data) => {
             setComments((prev) => [{ ...data.comment, user: { displayName: "You" } }, ...prev]);
             setBody("");
           });
@@ -77,15 +77,15 @@ export default function FeedArticleCard({ article, onInteract }) {
       </div>
       <div className="discover-article-body">
         <div className="discover-meta-line">
-          <span>{article.source}</span>
-          <span>{article.author || "Staff"}</span>
+          <span>Source: {article.source}</span>
+          <span>Author: {article.author || "Staff"}</span>
         </div>
         <h2>{article.title}</h2>
         <p>{article.description}</p>
         <div className="discover-meta-line">
           <span>{formatDate(article.publishedAt)}</span>
-          <span>{article.language}</span>
-          <span>{article.category}</span>
+          <span>Language: {article.language}</span>
+          <span>Category: {article.category}</span>
           <span>{article.readingTimeMinutes || 1} min read</span>
         </div>
         <div className="discover-card-actions">

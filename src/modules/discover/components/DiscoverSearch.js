@@ -12,13 +12,16 @@ export default function DiscoverSearch({ discover, onShowReels }) {
   const [dismissedWarning, setDismissedWarning] = useState(false);
 
   function runSearch(text, allowWarning = false) {
+    console.log("[SEARCH]", text);
     discoverLog("Search", "keyword", { keyword: text, scope, quota });
-    if (quota?.warning && !dismissedWarning && !allowWarning) {
+    const useReelSearch = scope === "all" || scope === "reels";
+    if (!useReelSearch && quota?.warning && !dismissedWarning && !allowWarning) {
       setPendingQuery(text);
       return;
     }
-    const useReelSearch = scope === "all" || scope === "reels";
-    const request = useReelSearch && discover?.searchReels ? discover.searchReels(text) : searchDiscover(text, scope);
+    const request = useReelSearch && discover?.searchReels
+      ? Promise.resolve(discover.searchReels(text))
+      : searchDiscover(text, scope);
     if (useReelSearch) onShowReels?.();
     request.then((data) => {
       setResults(data);
@@ -39,6 +42,7 @@ export default function DiscoverSearch({ discover, onShowReels }) {
     const text = query.trim();
     if (!text) {
       setResults({ articles: [], reels: [], creators: [], topics: [] });
+      if ((scope === "all" || scope === "reels") && discover?.searchReels) discover.searchReels("");
       return undefined;
     }
     const timeout = window.setTimeout(() => {
@@ -50,7 +54,7 @@ export default function DiscoverSearch({ discover, onShowReels }) {
   return (
     <div className="discover-search-box">
       <div className="discover-search-line">
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search videos, articles, creators, topics, hashtags" />
+        <input value={query} onChange={(event) => { discoverLog("Search", "changed", { value: event.target.value }); setQuery(event.target.value); }} placeholder="Search reels or news" />
         <select value={scope} onChange={(event) => setScope(event.target.value)}>
           <option value="all">All</option>
           <option value="articles">Articles</option>

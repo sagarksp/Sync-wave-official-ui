@@ -10,7 +10,7 @@ export default function DiscoverHome() {
   const [tab, setTab] = useState("feed");
 
   return (
-    <div className="discover-page">
+    <div className={`discover-page discover-page-${tab}`}>
       <header className="discover-head">
         <div>
           <div className="panel-title">Discover</div>

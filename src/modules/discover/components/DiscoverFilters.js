@@ -65,7 +65,7 @@ export default function DiscoverFilters({ filters, meta, onChange, onRefresh, re
           <select value={filters.date} onChange={(event) => onChange({ ...filters, date: event.target.value })}>
             <option value="today">Today</option>
             <option value="yesterday">Yesterday</option>
-            <option value="last-week">Last Week</option>
+            <option value="last-week">Last 7 Days</option>
             <option value="last-month">Last Month</option>
           </select>
         </label>
