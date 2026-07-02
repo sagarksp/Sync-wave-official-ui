@@ -17,6 +17,8 @@ import Library from "./pages/Library";
 import Profile from "./pages/Profile";
 import Queue from "./pages/Queue";
 import Settings from "./pages/Settings";
+import GamesModule from "./modules/games";
+import DiscoverModule from "./modules/discover";
 import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
@@ -27,9 +29,11 @@ const AISongDetail = lazy(() => import("./components/AISongDetail"));
 const NAV_ITEMS = [
   ["home", "Home"],
   ["search", "Search"],
+  ["discover", "Discover"],
   ["library", "Library"],
   ["playlists", "Playlists"],
   ["queue", "Queue"],
+  ["games", "Games"],
   ["music-studio", "AI Music Studio"],
   ["chat", "Chat"],
   ["downloads", "Downloads"],
@@ -41,9 +45,10 @@ const NAV_ITEMS = [
 const MOBILE_TABS = [
   ["home", "Home"],
   ["search", "Search"],
+  ["discover", "Discover"],
   ["library", "Library"],
+  ["games", "Games"],
   ["chat", "Chat"],
-  ["music-studio", "AI"],
 ];
 
 const MENU_ITEMS = NAV_ITEMS.filter(([key]) => !MOBILE_TABS.some(([mobileKey]) => mobileKey === key));
@@ -51,9 +56,11 @@ const MENU_ITEMS = NAV_ITEMS.filter(([key]) => !MOBILE_TABS.some(([mobileKey]) =
 const ROUTE_BY_TAB = {
   home: "/home",
   search: "/search",
+  discover: "/discover",
   library: "/library",
   playlists: "/playlists",
   queue: "/queue",
+  games: "/games",
   "music-studio": "/music-studio",
   chat: "/chat",
   downloads: "/downloads",
@@ -64,6 +71,8 @@ const ROUTE_BY_TAB = {
 
 function tabFromPath(pathname) {
   if (pathname === "/" || pathname === "/home") return "home";
+  if (pathname === "/games" || pathname.startsWith("/games/")) return "games";
+  if (pathname === "/discover" || pathname.startsWith("/discover/")) return "discover";
   if (pathname === "/music-studio" || pathname.startsWith("/ai-song/") || pathname === "/ai-library" || pathname === "/generate-music" || pathname === "/ai-music") return "music-studio";
   const found = Object.entries(ROUTE_BY_TAB).find(([, route]) => route === pathname);
   return found?.[0] || "home";
@@ -454,6 +463,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
               <Route path="/" element={<Navigate to="/home" replace />} />
               <Route path="/home" element={<Home playlists={playlists} onPlaySong={playSong} onPlayPlaylist={playPlaylist} onTab={openTab} />} />
               <Route path="/search" element={<Search />} />
+              <Route path="/discover" element={<DiscoverModule />} />
               <Route path="/playlists" element={<Playlists {...playlistProps} />} />
               <Route path="/chat" element={<Chat deviceName={auth.deviceName} auth={auth} />} />
               <Route path="/library" element={<Library playlists={playlists} onOpenPlaylists={() => openTab("playlists")} />} />
@@ -461,6 +471,7 @@ function Shell({ auth, onAuthUpdate, onLogout }) {
               <Route path="/profile" element={<Profile auth={auth} onAuthUpdate={onProfileUpdate} onLogoutAll={logoutAll} />} />
               <Route path="/settings" element={<Settings auth={auth} installPrompt={installPrompt} onInstall={installApp} onLogout={onLogout} />} />
               <Route path="/queue" element={<Queue />} />
+              <Route path="/games" element={<GamesModule auth={auth} />} />
               <Route path="/downloads" element={<Downloads />} />
               <Route path="/ai-music" element={<Navigate to="/music-studio" replace />} />
               <Route path="/generate-music" element={<Navigate to="/music-studio" replace />} />
