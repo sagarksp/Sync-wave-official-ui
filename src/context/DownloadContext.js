@@ -6,6 +6,7 @@ const DownloadContext = createContext(null);
 export function DownloadProvider({ children }) {
   const [downloads, setDownloads] = useState([]);
   const [progress, setProgress] = useState({});
+  const [toast, setToast] = useState("");
 
   const refresh = useCallback(async () => {
     const items = await listDownloads().catch(() => []);
@@ -19,11 +20,13 @@ export function DownloadProvider({ children }) {
   const startDownload = useCallback(async (song) => {
     if (!song?.id) return;
     setProgress((prev) => ({ ...prev, [song.id]: { value: 1, error: "" } }));
+    setToast(`Downloading ${song.title || "song"}...`);
     try {
-      await downloadSong(song, (value) => {
+      const item = await downloadSong(song, (value) => {
         setProgress((prev) => ({ ...prev, [song.id]: { value, error: "" } }));
       });
       await refresh();
+      setToast(`Downloaded ${item.title || song.title || "song"}`);
       window.setTimeout(() => {
         setProgress((prev) => {
           const next = { ...prev };
@@ -31,8 +34,12 @@ export function DownloadProvider({ children }) {
           return next;
         });
       }, 1200);
+      window.setTimeout(() => setToast(""), 3200);
     } catch (err) {
-      setProgress((prev) => ({ ...prev, [song.id]: { value: 0, error: err.message || "Download failed" } }));
+      const message = err.message || "Download failed";
+      setProgress((prev) => ({ ...prev, [song.id]: { value: 0, error: message } }));
+      setToast(message);
+      window.setTimeout(() => setToast(""), 4200);
     }
   }, [refresh]);
 
@@ -50,7 +57,12 @@ export function DownloadProvider({ children }) {
     isDownloaded: (id) => downloads.some((item) => item.id === id),
   }), [deleteDownload, downloads, progress, refresh, startDownload]);
 
-  return <DownloadContext.Provider value={value}>{children}</DownloadContext.Provider>;
+  return (
+    <DownloadContext.Provider value={value}>
+      {children}
+      {toast && <div className="sync-toast download-toast">{toast}</div>}
+    </DownloadContext.Provider>
+  );
 }
 
 export function useDownloads() {
